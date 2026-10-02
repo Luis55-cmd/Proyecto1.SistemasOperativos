@@ -2,6 +2,8 @@
 
 Comenzar por el [índice de requisitos](enunciado/INDICE.md).
 
+- [Diagrama de capas en Mermaid](diagrama-capas.md), primer borrador para discusión.
+
 - [Enunciado transcrito](enunciado/transcripcion.md).
 - [Checklist atómico de requisitos](enunciado/checklist-requerimientos-proyecto-1.md).
 - [Dudas explicadas](enunciado/dudas-explicadas-proyecto-1.md).

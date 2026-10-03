@@ -3,6 +3,7 @@
 Comenzar por el [índice de requisitos](enunciado/INDICE.md).
 
 - [Diagrama de capas en Mermaid](diagrama-capas.md), primer borrador para discusión.
+- [Mapa de desarrollo en dos niveles](plan-desarrollo/README.md): paquetes aproximados de PR, dependencias y requisitos atómicos asociados.
 
 - [Enunciado transcrito](enunciado/transcripcion.md).
 - [Checklist atómico de requisitos](enunciado/checklist-requerimientos-proyecto-1.md).

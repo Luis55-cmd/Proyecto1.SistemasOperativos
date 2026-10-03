@@ -163,6 +163,10 @@ flowchart TB
 
 ## Decisiones pendientes: no bloquear todo
 
+**Estado de P01:** base estructural cerrada por César el 03-10-2026; [clasificación de acuerdos](p01-base-estructural.md). Incluye relación directa con requisitos originales y separa pendientes de comportamiento e implementación; no exige cerrar todas las A para avanzar.
+
+Para trabajar P01: [comparación de alternativas para 35 decisiones concretas](p01-alternativas.md). Incluye alternativas y acuerdos registrados. Es un catálogo consultable por paquete, no 35 decisiones obligatorias antes de programar; su clasificación distingue alcance estructural, contratos y detalles a resolver al implementar cada parte.
+
 D-01 afecta el conjunto de políticas. D-04/05/06/07/11/16 afectan contratos de ejecución. D-08/10/12/13 requieren convenciones explícitas para casos límite. D-09 afecta cálculos; D-14/15 corresponden a cierre y entrega. La tabla y las fichas muestran a quién afecta cada una.
 
 P01 no necesita esperar todas las respuestas: entrega lo revisado y registra lo abierto. Un paquete afectado puede explorar alternativas, pero no cerrarse sobre un supuesto oculto. Registrar luego la respuesta de Ares o la decisión aceptada del equipo, manteniendo el checklist sin cambios.

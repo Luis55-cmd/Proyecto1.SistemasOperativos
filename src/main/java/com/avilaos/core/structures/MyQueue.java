@@ -55,7 +55,6 @@ public class MyQueue<T> {
     
     public T peek() {
         if (isEmpty()) {
-            throw new IllegalStateException("La cola está vacía");
         }
         return this.pFirst.data;
     }

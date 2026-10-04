@@ -25,7 +25,7 @@ public class MyLinkedList<T> {
     }
 
     public boolean isEmpty() {
-        return this.pFirst == null && this.size == 0;
+        return (this.pFirst == null && this.pLast==null) && this.size == 0;
     }
 
     public void append(T data) {
@@ -45,14 +45,13 @@ public class MyLinkedList<T> {
             this.pFirst = this.pLast = pNew;
         } else {
             pNew.pNext = this.pFirst;
-            this.pFirst = pNew; // Corregido: antes tenías this.pLast = pNew
+            this.pFirst = pNew; 
         }
         this.size++;
     }
 
     public void deleteFirst() {
         if (isEmpty()) {
-            throw new IllegalStateException("La lista está vacía");
         }
         this.pFirst = this.pFirst.pNext;
         this.size--;
@@ -67,11 +66,11 @@ public class MyLinkedList<T> {
         if (this.size == 1) {
             deleteFirst();
         }
-        Node<T> current = this.pFirst;
-        while (current.pNext != this.pLast) {
-            current = current.pNext;
+        Node<T> aux = this.pFirst;
+        while (aux.pNext != this.pLast) {
+            aux = aux.pNext;
         }
-        this.pLast = current;
+        this.pLast = aux;
         this.pLast.pNext = null;
         this.size--;
         
@@ -87,13 +86,13 @@ public class MyLinkedList<T> {
             append(data);
             return;
         }
-        Node<T> current = this.pFirst;
+        Node<T> aux = this.pFirst;
         for (int i = 0; i < pos - 1; i++) {
-            current = current.pNext;
+            aux = aux.pNext;
         }
         Node<T> pNew = new Node<>(data);
-        pNew.pNext = current.pNext;
-        current.pNext = pNew;
+        pNew.pNext = aux.pNext;
+        aux.pNext = pNew;
         this.size++;
     }
 
@@ -106,11 +105,11 @@ public class MyLinkedList<T> {
         if (pos == this.size - 1) {
            deleteLast();
         }
-        Node<T> current = this.pFirst;
+        Node<T> aux = this.pFirst;
         for (int i = 0; i < pos - 1; i++) {
-            current = current.pNext;
+            aux = aux.pNext;
         }
-        current.pNext = current.pNext.pNext;
+        aux.pNext = aux.pNext.pNext;
         this.size--;
     }
 

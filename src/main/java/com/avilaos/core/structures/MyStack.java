@@ -1,5 +1,7 @@
 package com.avilaos.core.structures;
 
+import java.util.NoSuchElementException;
+
 /**
  * Pila genérica propia (LIFO - Last In, First Out).
  * 
@@ -7,7 +9,7 @@ package com.avilaos.core.structures;
  * @param <T> 
  */
 public class MyStack<T> {
-    Node top;
+    Node<T> top;
     int size;
     
     public MyStack(){
@@ -25,17 +27,20 @@ public class MyStack<T> {
     }
     
     public void push(T data){
-    Node pNew = new Node(data);
+    Node<T> pNew = new Node<>(data);
     pNew.pNext = this.top;
     this.top = pNew;
     this.size++;
     }
     
-    public void pop(){
-    if(!isEmpty()){
+    public T pop(){
+    if(isEmpty()){
+        throw new NoSuchElementException("No se puede desempilar de una pila vacia");
+    }
+    T data = this.top.data;
     this.top = this.top.pNext;
     this.size--;
-    }
+    return data;
     }
     
     public int size(){

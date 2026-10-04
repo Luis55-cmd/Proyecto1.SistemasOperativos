@@ -1,5 +1,7 @@
 package com.avilaos.core.structures;
 
+import java.util.NoSuchElementException;
+
 /**
  * Lista enlazada genérica propia sin usar java.util.
  * 
@@ -52,6 +54,7 @@ public class MyLinkedList<T> {
 
     public void deleteFirst() {
         if (isEmpty()) {
+            throw new NoSuchElementException("No se puede borrar de una lista vacia");
         }
         this.pFirst = this.pFirst.pNext;
         this.size--;
@@ -62,9 +65,11 @@ public class MyLinkedList<T> {
 
     public void deleteLast() {
         if (isEmpty()) {
+            throw new NoSuchElementException("No se puede borrar de una lista vacia");
         }
         if (this.size == 1) {
             deleteFirst();
+            return;
         }
         Node<T> aux = this.pFirst;
         while (aux.pNext != this.pLast) {
@@ -78,9 +83,11 @@ public class MyLinkedList<T> {
 
     public void insertPos(int pos, T data) {
         if (pos < 0 || pos > this.size) {
+            throw new IndexOutOfBoundsException("Posicion de insercion invalida: " + pos);
         }
         if (pos == 0) {
             insertFirst(data);
+            return;
         }
         if (pos == this.size) {
             append(data);
@@ -98,12 +105,15 @@ public class MyLinkedList<T> {
 
     public void deletePos(int pos) {
         if (pos < 0 || pos >= this.size) {
+            throw new IndexOutOfBoundsException("Posicion de borrado invalida: " + pos);
         }
         if (pos == 0) {
             deleteFirst();
+            return;
         }
         if (pos == this.size - 1) {
            deleteLast();
+           return;
         }
         Node<T> aux = this.pFirst;
         for (int i = 0; i < pos - 1; i++) {

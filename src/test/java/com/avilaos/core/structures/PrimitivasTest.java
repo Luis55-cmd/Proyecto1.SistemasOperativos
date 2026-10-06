@@ -1,6 +1,6 @@
 package com.avilaos.core.structures;
 
-/** Regresiones secuenciales de primitivas; ejecutar con scripts/probar_primitivas.py. */
+/** Regresiones secuenciales de primitivas; ver docs/contratos/primitivas-correccion.md. */
 public class PrimitivasTest {
     static int failures;
     static int passed;

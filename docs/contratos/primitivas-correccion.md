@@ -26,11 +26,23 @@ Node.pNext y los nodos de pila conservan ahora T, evitando operaciones genérica
 
 ## Verificación reproducible
 
+Las pruebas están escritas en Java en `src/test/java/com/avilaos/core/structures/PrimitivasTest.java`. Su `main` ejecuta las comprobaciones y lanza `AssertionError` si alguna falla. No requieren Python ni librerías de pruebas externas. El antiguo script Python sólo lanzaba la compilación y ejecución; se retiró para depender únicamente del JDK.
+
+Desde la raíz del repositorio, con el JDK en el PATH (terminal macOS/Linux):
+
 ```sh
-python3 scripts/probar_primitivas.py --java-home '/Applications/Apache NetBeans.app/Contents/Home'
+javac -Xlint:unchecked -Werror -d target/primitivas-test src/main/java/com/avilaos/core/structures/*.java src/test/java/com/avilaos/core/structures/PrimitivasTest.java
 ```
 
-Usar la ruta del JDK propio en otros equipos. El script compila en un directorio temporal, sin librerías de pruebas externas; sale con error si falla compilación o algún caso. Incluye tamaños 0…5, todas sus posiciones válidas, índices inválidos, vacío, duplicados, retornos de extracción y vaciar/reutilizar. Comprueba contenido, enlaces/extremos, tamaño y tipo de excepción.
+Sólo si la compilación termina correctamente:
+
+```sh
+java -cp target/primitivas-test com.avilaos.core.structures.PrimitivasTest
+```
+
+En el Mac de César se pueden sustituir `javac` y `java` por `"/Applications/Apache NetBeans.app/Contents/Home/bin/javac"` y `"/Applications/Apache NetBeans.app/Contents/Home/bin/java"`, respectivamente. En otros equipos, usar los ejecutables de su propio JDK. Las clases compiladas quedan en `target/primitivas-test`; no deben versionarse.
+
+Incluye tamaños 0…5, todas sus posiciones válidas, índices inválidos, vacío, duplicados, retornos de extracción y vaciar/reutilizar. Comprueba contenido, enlaces/extremos, tamaño y tipo de excepción.
 
 No prueba concurrencia ni NetBeans. Compila sólo estructuras porque el esqueleto heredado tiene SchedulingPolicyType vacío; no presenta este resultado como compilación completa del proyecto. POM Java 17 y ese enum deben resolverse en su ámbito, no se modifican aquí.
 

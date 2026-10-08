@@ -6,7 +6,7 @@ package com.avilaos.core.structures;
 
 public class Node<T> {
     T data;
-    Node pNext;
+    Node<T> pNext;
     
     public Node(T data){
     this.data = data;

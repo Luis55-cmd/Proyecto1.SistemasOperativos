@@ -1,5 +1,6 @@
 package com.avilaos.core.structures;
 
+
 /**
  * Cola genérica propia (FIFO - First In, First Out).
  * 
@@ -43,6 +44,7 @@ public class MyQueue<T> {
     
     public T dequeue() {
         if (isEmpty()) {
+            throw new EstructuraVaciaException("No se puede desencolar de una cola vacia");
         }
         T data = this.pFirst.data;
         this.pFirst = this.pFirst.pNext;
@@ -55,6 +57,7 @@ public class MyQueue<T> {
     
     public T peek() {
         if (isEmpty()) {
+            throw new EstructuraVaciaException("No se puede consultar una cola vacia");
         }
         return this.pFirst.data;
     }

@@ -5,6 +5,7 @@ package com.avilaos.core.structures;
  * 
  * @param <T> Tipo de dato almacenado en el nodo.
  */
+
 public class Node<T> {
     public T data;
     public Node<T> pNext;

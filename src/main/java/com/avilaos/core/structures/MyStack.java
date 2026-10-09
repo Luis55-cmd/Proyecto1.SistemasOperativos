@@ -1,5 +1,6 @@
 package com.avilaos.core.structures;
 
+
 /**
  * Pila genérica propia (LIFO - Last In, First Out).
  * 

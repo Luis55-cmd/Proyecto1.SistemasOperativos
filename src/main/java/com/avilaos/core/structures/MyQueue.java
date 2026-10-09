@@ -1,5 +1,6 @@
 package com.avilaos.core.structures;
 
+
 /**
  * Cola genérica propia (FIFO - First In, First Out).
  * 

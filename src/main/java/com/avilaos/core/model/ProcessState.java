@@ -1,13 +1,15 @@
 package com.avilaos.core.model;
 
 /**
- * Estados del ciclo de vida de un proceso en ÁvilaOS.
- * Requisito: RF §1, RF §2, ARC-16.
+ * Tipos de procesos admitidos en el simulador ÁvilaOS.
+ * Requisito: RF §1 y RF §2.
  */
 public enum ProcessState {
-    NEW,
-    READY,
-    RUNNING,
-    BLOCKED,
-    TERMINATED
+    NUEVO,
+    LISTO,
+    EJECUTANDO,
+    BLOQUEADO,
+    SALIENTE,
+    SUSPENDIDO_LISTO,
+    SUSPENDIDO_BLOQUEADO,
 }

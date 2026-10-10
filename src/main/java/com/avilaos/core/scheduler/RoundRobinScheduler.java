@@ -9,7 +9,7 @@ import com.avilaos.core.structures.MyQueue;
  * Desaloja al proceso cuando consume su cuota de tiempo y lo envía al final de la cola.
  */
 public class RoundRobinScheduler implements IScheduler {
-    // TODO: Cola FIFO y control de quantum restante
+    int quantum;
 
     @Override
     public ProcessControlBlock scheduleNext(MyQueue<ProcessControlBlock> readyQueue, ProcessControlBlock currentRunning) {

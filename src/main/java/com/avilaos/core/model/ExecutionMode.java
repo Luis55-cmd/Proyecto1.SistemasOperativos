@@ -6,5 +6,5 @@ package com.avilaos.core.model;
  */
 public enum ExecutionMode {
     USER,
-    SYSTEM
+    KERNEL
 }

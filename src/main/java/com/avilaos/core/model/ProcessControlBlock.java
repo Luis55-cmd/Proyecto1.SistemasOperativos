@@ -45,6 +45,8 @@ public class ProcessControlBlock {
     private int cyclesPerOperation;
     private int requiredElements;
     private int processedElements;
+    
+    private int memoryPointer;
 
     /**
      * Constructor por defecto: asigna ID único generado automáticamente.
@@ -78,7 +80,7 @@ public class ProcessControlBlock {
      */
     public ProcessControlBlock(String name, int computerId, ProcessType type,
                                int totalInstructions, int assignedMemory,
-                               int priority, int deadline) {
+                               int priority, int deadline, int memoryPointer) {
         this();
         this.name = (name != null && !name.trim().isEmpty()) ? name : "Process-" + this.id;
         this.computerId = computerId;
@@ -89,6 +91,7 @@ public class ProcessControlBlock {
         this.priority = priority;
         this.deadline = deadline;
         this.remainingDeadline = deadline;
+        this.memoryPointer = memoryPointer;
     }
 
     /**
@@ -98,12 +101,20 @@ public class ProcessControlBlock {
                                int totalInstructions, int assignedMemory,
                                int priority, int deadline,
                                String targetBufferId, int cyclesPerOperation,
-                               int requiredElements) {
-        this(name, computerId, type, totalInstructions, assignedMemory, priority, deadline);
+                               int requiredElements, int memoryPointer) {
+        this.name = (name != null && !name.trim().isEmpty()) ? name : "Process-" + this.id;
+        this.computerId = computerId;
+        this.type = (type != null) ? type : ProcessType.CONSUMER;   
+        this.totalInstructions = totalInstructions;
+        this.assignedMemory = assignedMemory;
+        this.priority = priority;
+        this.deadline = deadline;
+        this.state = ProcessState.NUEVO;
         this.targetBufferId = targetBufferId;
         this.cyclesPerOperation = cyclesPerOperation;
         this.requiredElements = requiredElements;
         this.processedElements = 0;
+        this.memoryPointer = memoryPointer;
     }
 
     /**
@@ -349,6 +360,22 @@ public class ProcessControlBlock {
 
     public void setProcessedElements(int processedElements) {
         this.processedElements = processedElements;
+    }
+    
+    public int getIdFather() {
+        return idFather;
+    }
+
+    public void setIdFather(int idFather) {
+        this.idFather = idFather;
+    }
+
+    public int getMemoryPointer() {
+        return memoryPointer;
+    }
+
+    public void setMemoryPointer(int memoryPointer) {
+        this.memoryPointer = memoryPointer;
     }
 
     @Override

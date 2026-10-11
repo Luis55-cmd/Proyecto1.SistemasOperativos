@@ -3,6 +3,8 @@ import com.avilaos.Computer;
 import com.avilaos.core.structures.*;
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessState;
+import com.avilaos.core.model.SchedulingPolicyType;
+import com.avilaos.core.scheduler.*;
 /**
  
  */
@@ -32,7 +34,7 @@ public class ComputerKernel {
     this.clock = clock;
     }
     
-    public String gestionCreateProcess(Computer idComp, boolean asignacionManual){
+    public String gestionCreateProcess(Computer idComp, boolean asignacionManual, int memoryPt){
         
         int idProcess = 1;
         if(!this.processList.isEmpty()){
@@ -43,7 +45,24 @@ public class ComputerKernel {
             int memoryAssigned = p.getAssignedMemory();
             if(isMemoryTotallyUsed(idComp,memoryAssigned)){
                 p.setComputerId(idComp.getId());
-                this.newQueue.enqueue(p);
+                p.setMemoryPointer(memoryPt);
+                switch(idComp.getPolitica()){
+                case FCFS:
+                    FcfsScheduler scheduler = new FcfsScheduler();
+                    scheduler.addProcess(p);
+            
+                case ROUND_ROBIN:
+                    RoundRobinScheduler scheduler1 = new RoundRobinScheduler();
+                    scheduler1.addProcess(p);
+                    
+                case EDF:
+                    EdfScheduler scheduler2 = new EdfScheduler();
+                    scheduler2.addProcess(p);
+                    
+                case PRIORITY_PREEMPTIVE:
+                    PreemptivePriorityScheduler scheduler3 = new PreemptivePriorityScheduler();
+                    scheduler3.addProcess(p);
+            }
                 return "Se ha creado el proceso";
             }
             return "Falta de memoria. Intente de nuevo.";
@@ -71,16 +90,32 @@ public class ComputerKernel {
         }
     }
     
-    public void dispatch(){
+    public void dispatch(Computer com, ProcessControlBlock p){
         if(this.readyQueue.isEmpty()){
         
         
         }else{
-        
-        
-        
+            switch(com.getPolitica()){
+                case FCFS:
+                    FcfsScheduler scheduler = new FcfsScheduler();
+                    scheduler.scheduleNext(this.readyQueue, p);
+            
+                case ROUND_ROBIN:
+                    RoundRobinScheduler scheduler1 = new RoundRobinScheduler();
+                    scheduler1.scheduleNext(this.readyQueue, p);
+                    
+                case EDF:
+                    EdfScheduler scheduler2 = new EdfScheduler();
+                    scheduler2.scheduleNext(this.readyQueue, p);
+                    
+                case PRIORITY_PREEMPTIVE:
+                    PreemptivePriorityScheduler scheduler3 = new PreemptivePriorityScheduler();
+                    scheduler3.scheduleNext(this.readyQueue, p);
+            }
         }
     }
+    
+
     
     
    

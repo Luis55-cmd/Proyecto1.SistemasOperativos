@@ -51,17 +51,17 @@ public class PreemptivePriorityScheduler implements IScheduler {
         MyQueue<ProcessControlBlock> targetQueue = (queue != null) ? queue : this.readyQueue;
 
         // Si hay un proceso en CPU, verificamos si algún proceso en cola tiene mayor prioridad (desalojo)
-        if (currentRunning != null && currentRunning.getState() == ProcessState.RUNNING) {
+        if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
             if (!targetQueue.isEmpty()) {
                 ProcessControlBlock candidate = targetQueue.peek();
                 if (isStrictlyHigherPriority(candidate, currentRunning)) {
                     // Desalojo: el actual vuelve a la cola y se reordena
-                    currentRunning.setState(ProcessState.READY);
+                    currentRunning.setState(ProcessState.LISTO);
                     targetQueue.enqueue(currentRunning);
                     sortQueue(targetQueue);
 
                     ProcessControlBlock next = targetQueue.dequeue();
-                    next.setState(ProcessState.RUNNING);
+                    next.setState(ProcessState.EJECUTANDO);
                     return next;
                 }
             }
@@ -71,7 +71,7 @@ public class PreemptivePriorityScheduler implements IScheduler {
         // Si la CPU está libre
         if (!targetQueue.isEmpty()) {
             ProcessControlBlock next = targetQueue.dequeue();
-            next.setState(ProcessState.RUNNING);
+            next.setState(ProcessState.EJECUTANDO);
             return next;
         }
 
@@ -81,7 +81,7 @@ public class PreemptivePriorityScheduler implements IScheduler {
     @Override
     public void addProcess(ProcessControlBlock process) {
         if (process != null) {
-            process.setState(ProcessState.READY);
+            process.setState(ProcessState.EJECUTANDO);
             this.readyQueue.enqueue(process);
             sortQueue(this.readyQueue);
         }

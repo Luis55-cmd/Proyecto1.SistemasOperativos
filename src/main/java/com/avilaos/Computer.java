@@ -4,6 +4,7 @@
  */
 package com.avilaos;
 import com.avilaos.core.kernel.ComputerKernel;
+import com.avilaos.core.model.SchedulingPolicyType;
 /**
  *
  * @author rafr
@@ -14,13 +15,23 @@ public class Computer {
     private RAM ram;
     private DMA dma;
     private ComputerKernel kernel;
+    private SchedulingPolicyType politica;
 
-    public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel) {
+    public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica) {
         this.id = id;
         this.cpu = cpu;
         this.ram = ram;
         this.dma = dma;
         this.kernel = kernel;
+        this.politica = politica;
+    }
+
+    public SchedulingPolicyType getPolitica() {
+        return politica;
+    }
+
+    public void setPolitica(SchedulingPolicyType politica) {
+        this.politica = politica;
     }
 
     public int getId() {

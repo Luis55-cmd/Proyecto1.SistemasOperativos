@@ -14,23 +14,26 @@ public class ComputerKernel {
     MyQueue<ProcessControlBlock> blockedQueue;
     MyQueue<ProcessControlBlock> newQueue;
     MyQueue<ProcessControlBlock> readyQueue;
+    MyQueue<ProcessControlBlock> readyQueue2;
+    MyQueue<ProcessControlBlock> readyQueue3;
+    MyQueue<ProcessControlBlock> readyQueue4;
     MyQueue<ProcessControlBlock> endedQueue;
-    Dispatcher dispatcher;
     GlobalClock clock;
     
     public ComputerKernel(MyLinkedList<ProcessControlBlock> processList,
     MyQueue<ProcessControlBlock> blockedQueue,
     MyQueue<ProcessControlBlock> newQueue,
     MyQueue<ProcessControlBlock> readyQueue,
+    MyQueue<ProcessControlBlock> readyQueue2,
+    MyQueue<ProcessControlBlock> readyQueue3,
+    MyQueue<ProcessControlBlock> readyQueue4,
     MyQueue<ProcessControlBlock> endedQueue,
-    Dispatcher dispatcher,
     GlobalClock clock){
     this.blockedQueue = blockedQueue;
     this.processList = processList;
     this.newQueue = newQueue;
     this.readyQueue = readyQueue;
     this.endedQueue = endedQueue;
-    this.dispatcher = dispatcher;
     this.clock = clock;
     }
     
@@ -45,6 +48,7 @@ public class ComputerKernel {
             int memoryAssigned = p.getAssignedMemory();
             if(isMemoryTotallyUsed(idComp,memoryAssigned)){
                 p.setComputerId(idComp.getId());
+                this.processList.append(p);
                 p.setMemoryPointer(memoryPt);
                 switch(idComp.getPolitica()){
                 case FCFS:
@@ -92,8 +96,10 @@ public class ComputerKernel {
     
     public void dispatch(Computer com, ProcessControlBlock p){
         if(this.readyQueue.isEmpty()){
-        
-        
+            if(!this.blockedQueue.isEmpty()){
+                this.blockedQueue.peek().setState(ProcessState.EJECUTANDO);
+                this.blockedQueue.dequeue();
+            }
         }else{
             switch(com.getPolitica()){
                 case FCFS:
@@ -112,12 +118,38 @@ public class ComputerKernel {
                     PreemptivePriorityScheduler scheduler3 = new PreemptivePriorityScheduler();
                     scheduler3.scheduleNext(this.readyQueue, p);
             }
+            com.getCpu().setPCB(p);
         }
     }
     
-
     
+    
+    
+    public void terminateFatherProcess(int fatherId){
+       for (int i = 0; i < this.processList.size(); i++) {
+            ProcessControlBlock proceso = this.processList.get(i);
+            ProcessState estado = proceso.getState();
+            if(proceso.getIdFather() == fatherId){
+                proceso.setState(ProcessState.SALIENTE);
+                MyQueue<ProcessControlBlock> aux = new MyQueue();
+                if(proceso.getState() == ProcessState.BLOQUEADO){
+                    
+                
+                }else if(proceso.getState() == ProcessState.LISTO){
+                
+                
+                }
+            }
+}
+    
+    
+    
+    }}
+    
+    
+    
+
+
     
    
     
-}

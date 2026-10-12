@@ -3,6 +3,8 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package com.avilaos;
+import com.avilaos.core.model.ExecutionMode;
+import com.avilaos.core.model.ProcessControlBlock;
 
 /**
  *
@@ -12,13 +14,24 @@ public class CPU {
     private int PC;
     private int MAR;
     private int IR;
-    private int PSW;
+    private ProcessControlBlock PCB;
+    private ExecutionMode mode;
 
-    public CPU(int PC, int MAR, int IR, int PSW) {
+    public CPU(int PC, int MAR, int IR,ProcessControlBlock PCB ,ExecutionMode mode) {
         this.PC = PC;
         this.MAR = MAR;
         this.IR = IR;
-        this.PSW = PSW;
+        this.PCB = null;
+        this.mode = ExecutionMode.USER;
+        
+    }
+
+    public ExecutionMode getMode() {
+        return mode;
+    }
+
+    public void setMode(ExecutionMode mode) {
+        this.mode = mode;
     }
 
     public int getPC() {
@@ -45,13 +58,15 @@ public class CPU {
         this.IR = IR;
     }
 
-    public int getPSW() {
-        return PSW;
+    public ProcessControlBlock getPCB() {
+        return PCB;
     }
 
-    public void setPSW(int PSW) {
-        this.PSW = PSW;
+    public void setPCB(ProcessControlBlock PCB) {
+        this.PCB = PCB;
     }
+
+    
     
     
 }

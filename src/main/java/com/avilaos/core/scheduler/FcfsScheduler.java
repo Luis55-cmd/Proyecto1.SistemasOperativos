@@ -24,14 +24,14 @@ public class FcfsScheduler implements IScheduler {
         MyQueue<ProcessControlBlock> targetQueue = (queue != null) ? queue : this.readyQueue;
 
         // FCFS es no apropiativo: si el proceso actual sigue ejecutándose, retiene la CPU
-        if (currentRunning != null && currentRunning.getState() == ProcessState.RUNNING) {
+        if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
             return currentRunning;
         }
 
         // Si la CPU está libre o el proceso actual terminó/se bloqueó
         if (!targetQueue.isEmpty()) {
             ProcessControlBlock next = targetQueue.dequeue();
-            next.setState(ProcessState.RUNNING);
+            next.setState(ProcessState.EJECUTANDO);
             return next;
         }
 
@@ -41,7 +41,7 @@ public class FcfsScheduler implements IScheduler {
     @Override
     public void addProcess(ProcessControlBlock process) {
         if (process != null) {
-            process.setState(ProcessState.READY);
+            process.setState(ProcessState.LISTO);
             this.readyQueue.enqueue(process);
         }
     }

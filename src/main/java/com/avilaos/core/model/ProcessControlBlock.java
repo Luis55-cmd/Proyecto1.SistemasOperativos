@@ -52,7 +52,7 @@ public class ProcessControlBlock {
         this.id = ID_GENERATOR.getAndIncrement();
         this.name = "Process-" + this.id;
         this.computerId = 0;
-        this.state = ProcessState.NEW;
+        this.state = ProcessState.NUEVO;
         this.type = ProcessType.CPU_BOUND;
         this.blockReason = BlockReason.NONE;
         this.priority = 1;
@@ -112,10 +112,10 @@ public class ProcessControlBlock {
      * @param currentCycle Ciclo actual del reloj global.
      */
     public void updateDeadlineOnTick(int currentCycle) {
-        if (this.state != ProcessState.TERMINATED) {
+        if (this.state != ProcessState.SALIENTE) {
             this.remainingDeadline--;
             if (this.remainingDeadline <= 0) {
-                this.state = ProcessState.TERMINATED;
+                this.state = ProcessState.SALIENTE;
                 this.blockReason = BlockReason.NONE;
                 if (this.completionCycle == -1) {
                     this.completionCycle = currentCycle;
@@ -132,7 +132,7 @@ public class ProcessControlBlock {
      * @param currentCycle Ciclo actual del reloj global.
      */
     public void executeOneCycle(int currentCycle) {
-        if (this.state == ProcessState.RUNNING) {
+        if (this.state == ProcessState.EJECUTANDO) {
             if (this.startCycle == -1) {
                 this.startCycle = currentCycle;
             }
@@ -141,7 +141,7 @@ public class ProcessControlBlock {
             this.remainingTime--;
 
             if (this.remainingTime <= 0) {
-                this.state = ProcessState.TERMINATED;
+                this.state = ProcessState.SALIENTE;
                 this.blockReason = BlockReason.NONE;
                 this.completionCycle = currentCycle;
             }
@@ -157,7 +157,7 @@ public class ProcessControlBlock {
     public void registerElementProcessed(int currentCycle) {
         this.processedElements++;
         if (this.requiredElements > 0 && this.processedElements >= this.requiredElements) {
-            this.state = ProcessState.TERMINATED;
+            this.state = ProcessState.SALIENTE;
             this.blockReason = BlockReason.NONE;
             this.completionCycle = currentCycle;
         }
@@ -169,7 +169,7 @@ public class ProcessControlBlock {
      * @param currentCycle Ciclo actual del reloj global.
      */
     public void terminate(int currentCycle) {
-        this.state = ProcessState.TERMINATED;
+        this.state = ProcessState.SALIENTE;
         this.blockReason = BlockReason.NONE;
         if (this.completionCycle == -1) {
             this.completionCycle = currentCycle;

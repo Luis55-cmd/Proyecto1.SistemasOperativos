@@ -96,25 +96,23 @@ public class ProcessControlBlock {
 
     /**
      * Constructor para procesos de sincronización (Productor / Consumidor).
+     * Recibe los datos comunes y los del buffer; crea un PCB con identidad propia.
+     * Delega al constructor estándar, que genera el ID e inicializa el contexto,
+     * y después completa los parámetros de sincronización. No reserva RAM ni encola.
+     * Sin ciclos; conserva CONSUMER si type es null y las reglas del nombre común.
+     * La validación adicional de rangos no forma parte de este constructor.
      */
     public ProcessControlBlock(String name, int computerId, ProcessType type,
                                int totalInstructions, int assignedMemory,
                                int priority, int deadline,
                                String targetBufferId, int cyclesPerOperation,
                                int requiredElements, int memoryPointer) {
-        this.name = (name != null && !name.trim().isEmpty()) ? name : "Process-" + this.id;
-        this.computerId = computerId;
-        this.type = (type != null) ? type : ProcessType.CONSUMER;   
-        this.totalInstructions = totalInstructions;
-        this.assignedMemory = assignedMemory;
-        this.priority = priority;
-        this.deadline = deadline;
-        this.state = ProcessState.NUEVO;
+        this(name, computerId, type != null ? type : ProcessType.CONSUMER,
+                totalInstructions, assignedMemory, priority, deadline, memoryPointer);
         this.targetBufferId = targetBufferId;
         this.cyclesPerOperation = cyclesPerOperation;
         this.requiredElements = requiredElements;
         this.processedElements = 0;
-        this.memoryPointer = memoryPointer;
     }
 
     /**

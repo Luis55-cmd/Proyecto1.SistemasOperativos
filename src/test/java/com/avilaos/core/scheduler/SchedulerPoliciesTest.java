@@ -35,19 +35,19 @@ public class SchedulerPoliciesTest {
         // Primer despacho: toma P1
         ProcessControlBlock running = scheduler.scheduleNext(null, null);
         if (running != p1) throw new AssertionError("FCFS debio elegir P1");
-        if (running.getState() != ProcessState.RUNNING) throw new AssertionError("P1 debe estar RUNNING");
+        if (running.getState() != ProcessState.EJECUTANDO) throw new AssertionError("P1 debe estar RUNNING");
 
         // FCFS no desaloja mientras P1 siga RUNNING
         ProcessControlBlock same = scheduler.scheduleNext(null, running);
         if (same != p1) throw new AssertionError("FCFS no debe desalojar a P1");
 
         // P1 termina
-        running.setState(ProcessState.TERMINATED);
+        running.setState(ProcessState.SALIENTE);
         ProcessControlBlock next = scheduler.scheduleNext(null, running);
         if (next != p2) throw new AssertionError("FCFS debio despachar P2 tras terminar P1");
 
         // P2 termina
-        next.setState(ProcessState.TERMINATED);
+        next.setState(ProcessState.SALIENTE);
         ProcessControlBlock none = scheduler.scheduleNext(null, next);
         if (none != null) throw new AssertionError("Cola vacia debe retornar null");
     }
@@ -73,7 +73,7 @@ public class SchedulerPoliciesTest {
         // Desalojo apropiativo de EDF
         ProcessControlBlock preempted = scheduler.scheduleNext(null, running);
         if (preempted != pCritical) throw new AssertionError("EDF debio desalojar por proceso con deadline mas cercano");
-        if (running.getState() != ProcessState.READY) throw new AssertionError("Proceso desalojado debe volver a READY");
+        if (running.getState() != ProcessState.LISTO) throw new AssertionError("Proceso desalojado debe volver a READY");
     }
 
     private static void testRoundRobin() {
@@ -104,7 +104,7 @@ public class SchedulerPoliciesTest {
         // Desalojo por quantum
         running = scheduler.scheduleNext(null, running);
         if (running != p2) throw new AssertionError("P1 debio ser desalojado y P2 despachado");
-        if (p1.getState() != ProcessState.READY) throw new AssertionError("P1 debe volver a READY");
+        if (p1.getState() != ProcessState.LISTO) throw new AssertionError("P1 debe volver a READY");
         if (scheduler.getCurrentQuantumRemaining() != 2) throw new AssertionError("Quantum de P2 debe reiniciar a 2");
     }
 
@@ -125,7 +125,7 @@ public class SchedulerPoliciesTest {
         // Desalojo inmediato
         ProcessControlBlock next = scheduler.scheduleNext(null, running);
         if (next != pHigh) throw new AssertionError("Debio desalojar pLow por pHigh de mayor prioridad");
-        if (pLow.getState() != ProcessState.READY) throw new AssertionError("pLow debe estar de vuelta en READY");
+        if (pLow.getState() != ProcessState.LISTO) throw new AssertionError("pLow debe estar de vuelta en READY");
 
         // Llega pMedium (prioridad 5) mientras corre pHigh (10) -> NO debe desalojar a pHigh
         ProcessControlBlock pMedium = new ProcessControlBlock("Medium", 1, ProcessType.CPU_BOUND, 10, 100, 5, 50);
@@ -135,7 +135,7 @@ public class SchedulerPoliciesTest {
         if (stillHigh != pHigh) throw new AssertionError("pHigh no debe ser desalojado por prioridad menor");
 
         // pHigh termina -> debe seleccionar pMedium antes que pLow
-        pHigh.setState(ProcessState.TERMINATED);
+        pHigh.setState(ProcessState.SALIENTE);
         ProcessControlBlock afterHigh = scheduler.scheduleNext(null, pHigh);
         if (afterHigh != pMedium) throw new AssertionError("Tras pHigh debio seleccionar pMedium (prioridad 5)");
     }

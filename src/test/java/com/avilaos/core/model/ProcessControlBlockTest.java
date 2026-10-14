@@ -30,7 +30,7 @@ public class ProcessControlBlockTest {
 
     private static void testRunningExecution() {
         ProcessControlBlock pcb = new ProcessControlBlock("CpuTask", 1, ProcessType.CPU_BOUND, 3, 100, 1, 10);
-        pcb.setState(ProcessState.RUNNING);
+        pcb.setState(ProcessState.EJECUTANDO);
 
         if (pcb.getProgramCounter() != 0) throw new AssertionError("PC inicial debe ser 0");
         if (pcb.getMemoryAddressRegister() != 0) throw new AssertionError("MAR inicial debe ser 0");
@@ -40,7 +40,7 @@ public class ProcessControlBlockTest {
         if (pcb.getProgramCounter() != 1) throw new AssertionError("PC debe ser 1");
         if (pcb.getMemoryAddressRegister() != 1) throw new AssertionError("MAR debe ser 1");
         if (pcb.getRemainingTime() != 2) throw new AssertionError("remainingTime debe ser 2");
-        if (pcb.getState() != ProcessState.RUNNING) throw new AssertionError("Estado debe seguir siendo RUNNING");
+        if (pcb.getState() != ProcessState.EJECUTANDO) throw new AssertionError("Estado debe seguir siendo RUNNING");
         if (pcb.getStartCycle() != 1) throw new AssertionError("startCycle debe ser 1");
 
         // Ciclo 2
@@ -51,23 +51,23 @@ public class ProcessControlBlockTest {
         // Ciclo 3 (termina instrucciones)
         pcb.executeOneCycle(3);
         if (pcb.getRemainingTime() != 0) throw new AssertionError("remainingTime debe ser 0");
-        if (pcb.getState() != ProcessState.TERMINATED) throw new AssertionError("Estado debe ser TERMINATED");
+        if (pcb.getState() != ProcessState.SALIENTE) throw new AssertionError("Estado debe ser TERMINATED");
         if (pcb.getCompletionCycle() != 3) throw new AssertionError("completionCycle debe ser 3");
     }
 
     private static void testDeadlineExpiration() {
         ProcessControlBlock pcb = new ProcessControlBlock("DeadTask", 1, ProcessType.CPU_BOUND, 10, 100, 1, 2);
-        pcb.setState(ProcessState.READY);
+        pcb.setState(ProcessState.LISTO);
 
         // Ciclo 1: remainingDeadline pasa de 2 a 1
         pcb.updateDeadlineOnTick(1);
         if (pcb.getRemainingDeadline() != 1) throw new AssertionError("remainingDeadline debe ser 1");
-        if (pcb.getState() != ProcessState.READY) throw new AssertionError("Debe seguir READY");
+        if (pcb.getState() != ProcessState.LISTO) throw new AssertionError("Debe seguir READY");
 
         // Ciclo 2: remainingDeadline llega a 0 -> transición inmediata a TERMINATED
         pcb.updateDeadlineOnTick(2);
         if (pcb.getRemainingDeadline() != 0) throw new AssertionError("remainingDeadline debe ser 0");
-        if (pcb.getState() != ProcessState.TERMINATED) throw new AssertionError("Debe transicionar a TERMINATED");
+        if (pcb.getState() != ProcessState.SALIENTE) throw new AssertionError("Debe transicionar a TERMINATED");
         if (pcb.getCompletionCycle() != 2) throw new AssertionError("completionCycle debe ser 2");
     }
 
@@ -80,9 +80,9 @@ public class ProcessControlBlockTest {
 
         producer.registerElementProcessed(1);
         producer.registerElementProcessed(2);
-        if (producer.getState() == ProcessState.TERMINATED) throw new AssertionError("Aun no debe terminar");
+        if (producer.getState() == ProcessState.SALIENTE) throw new AssertionError("Aun no debe terminar");
 
         producer.registerElementProcessed(3);
-        if (producer.getState() != ProcessState.TERMINATED) throw new AssertionError("Debe terminar al cumplir cuota");
+        if (producer.getState() != ProcessState.SALIENTE) throw new AssertionError("Debe terminar al cumplir cuota");
     }
 }

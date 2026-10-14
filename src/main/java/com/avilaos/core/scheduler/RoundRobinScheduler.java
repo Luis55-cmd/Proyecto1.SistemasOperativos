@@ -32,11 +32,11 @@ public class RoundRobinScheduler implements IScheduler {
         MyQueue<ProcessControlBlock> targetQueue = (queue != null) ? queue : this.readyQueue;
 
         // Si hay un proceso en ejecución
-        if (currentRunning != null && currentRunning.getState() == ProcessState.RUNNING) {
+        if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
             // Si consumió todo su quantum de tiempo
             if (currentQuantumRemaining <= 0) {
                 // Desalojo: vuelve a la cola de listos
-                currentRunning.setState(ProcessState.READY);
+                currentRunning.setState(ProcessState.LISTO);
                 targetQueue.enqueue(currentRunning);
                 currentRunning = null;
             } else {
@@ -48,7 +48,7 @@ public class RoundRobinScheduler implements IScheduler {
         // Si la CPU quedó libre o fue desalojada
         if (!targetQueue.isEmpty()) {
             ProcessControlBlock next = targetQueue.dequeue();
-            next.setState(ProcessState.RUNNING);
+            next.setState(ProcessState.EJECUTANDO);
             this.currentQuantumRemaining = this.quantum; // Reinicia el quantum para el nuevo proceso
             return next;
         }
@@ -59,7 +59,7 @@ public class RoundRobinScheduler implements IScheduler {
     @Override
     public void addProcess(ProcessControlBlock process) {
         if (process != null) {
-            process.setState(ProcessState.READY);
+            process.setState(ProcessState.LISTO);
             this.readyQueue.enqueue(process);
         }
     }

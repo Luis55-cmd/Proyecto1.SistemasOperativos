@@ -16,6 +16,7 @@ public class Computer {
     private DMA dma;
     private ComputerKernel kernel;
     private SchedulingPolicyType politica;
+    private com.avilaos.memory.MemoryManager memoryManager;
 
     public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica) {
         this.id = id;
@@ -24,6 +25,7 @@ public class Computer {
         this.dma = dma;
         this.kernel = kernel;
         this.politica = politica;
+        this.memoryManager = (ram != null) ? new com.avilaos.memory.MemoryManager(ram) : null;
     }
 
     public SchedulingPolicyType getPolitica() {
@@ -73,5 +75,18 @@ public class Computer {
     public void setKernel(ComputerKernel kernel) {
         this.kernel = kernel;
     }
-    
+
+    public com.avilaos.memory.MemoryManager getMemoryManager() {
+        if (this.memoryManager == null && this.ram != null) {
+            this.memoryManager = new com.avilaos.memory.MemoryManager(this.ram);
+        }
+        return this.memoryManager;
+    }
+
+    public void setMemoryManager(com.avilaos.memory.MemoryManager memoryManager) {
+        this.memoryManager = memoryManager;
+        if (memoryManager != null && memoryManager.getRam() != null) {
+            this.ram = memoryManager.getRam();
+        }
+    }
 }

@@ -23,6 +23,7 @@ public class ProcessControlBlock {
     // Estados y métricas
     private ProcessState state;
     private ProcessType type;
+    private ExecutionMode mode;
     private BlockReason blockReason;
     private int priority;
     private int assignedMemory;
@@ -76,11 +77,18 @@ public class ProcessControlBlock {
         this.cyclesPerOperation = 1;
         this.requiredElements = 0;
         this.processedElements = 0;
+        this.mode = ExecutionMode.USER;
     }
 
     /**
      * Constructor para procesos estándar (CPU-bound o I/O-bound).
      */
+    public ProcessControlBlock(String name, int computerId, ProcessType type,
+                               int totalInstructions, int assignedMemory,
+                               int priority, int deadline) {
+        this(name, computerId, type, totalInstructions, assignedMemory, priority, deadline, 0);
+    }
+
     public ProcessControlBlock(String name, int computerId, ProcessType type,
                                int totalInstructions, int assignedMemory,
                                int priority, int deadline, int memoryPointer) {
@@ -95,6 +103,15 @@ public class ProcessControlBlock {
         this.deadline = deadline;
         this.remainingDeadline = deadline;
         this.memoryPointer = memoryPointer;
+    }
+
+    public ProcessControlBlock(String name, int computerId, ProcessType type,
+                               int totalInstructions, int assignedMemory,
+                               int priority, int deadline,
+                               String targetBufferId, int cyclesPerOperation,
+                               int requiredElements) {
+        this(name, computerId, type, totalInstructions, assignedMemory, priority, deadline,
+                targetBufferId, cyclesPerOperation, requiredElements, 0);
     }
 
     /**
@@ -417,6 +434,14 @@ public class ProcessControlBlock {
 
     public void setMemoryPointer(int memoryPointer) {
         this.memoryPointer = memoryPointer;
+    }
+
+    public ExecutionMode getMode() {
+        return mode;
+    }
+
+    public void setMode(ExecutionMode mode) {
+        this.mode = mode;
     }
 
     @Override

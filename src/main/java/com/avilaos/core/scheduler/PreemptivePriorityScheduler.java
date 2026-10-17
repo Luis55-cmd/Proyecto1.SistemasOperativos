@@ -81,7 +81,7 @@ public class PreemptivePriorityScheduler implements IScheduler {
     @Override
     public void addProcess(ProcessControlBlock process) {
         if (process != null) {
-            process.setState(ProcessState.EJECUTANDO);
+            process.setState(ProcessState.LISTO);
             this.readyQueue.enqueue(process);
             sortQueue(this.readyQueue);
         }

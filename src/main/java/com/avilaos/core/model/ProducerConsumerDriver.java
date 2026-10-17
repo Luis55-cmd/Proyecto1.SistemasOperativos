@@ -1,45 +1,51 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package com.avilaos.core.model;
 
 /**
- *
- * @author rafr
+ * Controlador de sincronización para procesos Productor y Consumidor.
+ * Implementa el algoritmo clásico de Stallings por fases de ciclo
+ * e integra el cambio de modo SYSTEM / USER y latencia de red.
+ * 
+ * Requisitos: D-05, D-06, D-11, SEM-02 a SEM-09, Issue #24, Issue #25.
  */
 public class ProducerConsumerDriver {
-    private int latencia; 
-    
+
+    private final NetworkSimulator networkSimulator;
+
     public ProducerConsumerDriver(int latencia) {
-        this.latencia = latencia;
+        this.networkSimulator = new NetworkSimulator(latencia);
     }
 
     public int getLatencia() {
-        return latencia;
+        return networkSimulator.getLatencyCycles();
     }
-    
-    public void setLatencia(int latencia){
-        this.latencia = latencia;
+
+    public void setLatencia(int latencia) {
+        this.networkSimulator.setLatencyCycles(latencia);
     }
-    
+
+    public NetworkSimulator getNetworkSimulator() {
+        return networkSimulator;
+    }
+
     public void blockProcess(ProcessControlBlock pcb, BlockReason reason) {
         pcb.setState(ProcessState.BLOQUEADO);
         pcb.setBlockReason(reason);
+        pcb.setMode(ExecutionMode.USER);
     }
-    
+
     public boolean executeCycle(ProcessControlBlock pcb, Buffer buffer) {
-        if (pcb.getComputerId() != buffer.getIdComp()) {
-            if (pcb.getNetworkDelayRemaining() > 0) {
-                pcb.decrementNetworkDelay();
-                return true; 
-            } else if (pcb.getSyncStage() == 0 && pcb.getNetworkDelayRemaining() == 0 && !pcb.isNetworkDelayDone()) {
-                pcb.setNetworkDelayRemaining(latencia);
-                pcb.setNetworkDelayDone(true);
-                blockProcess(pcb, BlockReason.NETWORK_LATENCY);
-                return false; 
-            }
+        if (pcb == null || buffer == null) {
+            return false;
         }
+
+        // Manejo de latencia de red en accesos remotos
+        if (!networkSimulator.handleDelay(pcb, buffer)) {
+            return false; // Proceso bloqueado esperando latencia de red
+        }
+
+        // Operaciones de sincronización de semáforos se ejecutan en modo SYSTEM (llamada al sistema)
+        pcb.setMode(ExecutionMode.SYSTEM);
+
         switch (pcb.getSyncStage()) {
             case 0 -> {
                 if (pcb.getType() == ProcessType.PRODUCER) {
@@ -82,12 +88,14 @@ public class ProducerConsumerDriver {
                 if (pcb.getType() == ProcessType.PRODUCER) {
                     buffer.getLlenos().release();
                 } else {
-                    buffer.getVacios().release(); 
+                    buffer.getVacios().release();
                 }
                 pcb.incrementProcessedElements();
                 pcb.decrementRemainingTime();
                 pcb.setSyncStage(0);
-                pcb.setNetworkDelayDone(false); 
+                pcb.setNetworkDelayDone(false);
+                pcb.setMode(ExecutionMode.USER); // Regresa a modo usuario
+
                 if (pcb.getProcessedElements() >= pcb.getRequiredElements() || pcb.getRemainingTime() <= 0) {
                     pcb.setState(ProcessState.SALIENTE);
                     pcb.setBlockReason(BlockReason.NONE);
@@ -96,7 +104,7 @@ public class ProducerConsumerDriver {
                 return true;
             }
         }
+        pcb.setMode(ExecutionMode.USER);
         return true;
     }
-    
 }

@@ -1,224 +1,343 @@
 package com.avilaos.core.kernel;
+
 import com.avilaos.Computer;
 import com.avilaos.core.structures.*;
+import com.avilaos.core.model.BlockReason;
+import com.avilaos.core.model.ExecutionMode;
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.model.SchedulingPolicyType;
 import com.avilaos.core.scheduler.*;
 import com.avilaos.core.model.Buffer;
+
 /**
- 
+ * Núcleo del computador simulado (Capa 1: Kernel).
+ * Administra las colas de estados de procesos, admisión a largo plazo,
+ * despacho a CPU según política de planificación y control de ciclo de vida.
+ * 
+ * Requisitos: ARC-06 a ARC-10, PLA-01 a PLA-10, MEM-03 a MEM-07, Issues #19, #20, #21.
  */
 public class ComputerKernel {
-    
-    MyLinkedList<ProcessControlBlock> processList;
-    MyQueue<ProcessControlBlock> blockedQueue;
-    MyQueue<ProcessControlBlock> newQueue;
-    MyQueue<ProcessControlBlock> readyQueue;
-    MyQueue<ProcessControlBlock> readyQueue2;
-    MyQueue<ProcessControlBlock> readyQueue3;
-    MyQueue<ProcessControlBlock> readyQueue4;
-    MyQueue<ProcessControlBlock> endedQueue;
-    GlobalClock clock;
-    
+
+    private final MyLinkedList<ProcessControlBlock> processList;
+    private final MyQueue<ProcessControlBlock> blockedQueue;
+    private final MyQueue<ProcessControlBlock> newQueue;
+    private final MyQueue<ProcessControlBlock> readyQueue;
+    private final MyQueue<ProcessControlBlock> endedQueue;
+    private final GlobalClock clock;
+
+    private IScheduler activeScheduler;
+    private SchedulingPolicyType currentPolicy;
+
     public ComputerKernel(MyLinkedList<ProcessControlBlock> processList,
-    MyQueue<ProcessControlBlock> blockedQueue,
-    MyQueue<ProcessControlBlock> newQueue,
-    MyQueue<ProcessControlBlock> readyQueue,
-    MyQueue<ProcessControlBlock> readyQueue2,
-    MyQueue<ProcessControlBlock> readyQueue3,
-    MyQueue<ProcessControlBlock> readyQueue4,
-    MyQueue<ProcessControlBlock> endedQueue,
-    GlobalClock clock){
-    this.blockedQueue = blockedQueue;
-    this.processList = processList;
-    this.newQueue = newQueue;
-    this.readyQueue = readyQueue;
-    this.endedQueue = endedQueue;
-    this.clock = clock;
+                          MyQueue<ProcessControlBlock> blockedQueue,
+                          MyQueue<ProcessControlBlock> newQueue,
+                          MyQueue<ProcessControlBlock> readyQueue,
+                          MyQueue<ProcessControlBlock> readyQueue2,
+                          MyQueue<ProcessControlBlock> readyQueue3,
+                          MyQueue<ProcessControlBlock> readyQueue4,
+                          MyQueue<ProcessControlBlock> endedQueue,
+                          GlobalClock clock) {
+        this.processList = (processList != null) ? processList : new MyLinkedList<>();
+        this.blockedQueue = (blockedQueue != null) ? blockedQueue : new MyQueue<>();
+        this.newQueue = (newQueue != null) ? newQueue : new MyQueue<>();
+        this.readyQueue = (readyQueue != null) ? readyQueue : new MyQueue<>();
+        this.endedQueue = (endedQueue != null) ? endedQueue : new MyQueue<>();
+        this.clock = clock;
     }
-    
-    public String gestionCreateProcess(Computer idComp, boolean asignacionManual, int memoryPt){
-        
-        int idProcess = 1;
-        if(!this.processList.isEmpty()){
-            idProcess = this.processList.size() + 1;
+
+    /**
+     * Admisión de un proceso al computador (Planificador a largo plazo).
+     * Si hay memoria suficiente en RAM, se admite a READY; de lo contrario,
+     * permanece en NEW en espera de liberación de memoria.
+     */
+    public boolean admitProcess(Computer com, ProcessControlBlock p) {
+        if (p == null || com == null) {
+            return false;
         }
-        ProcessControlBlock p = new ProcessControlBlock();
-        if(asignacionManual){
-            int memoryAssigned = p.getAssignedMemory();
-            if(isMemoryTotallyUsed(idComp,memoryAssigned)){
-                p.setComputerId(idComp.getId());
-                for (int i=p.getMemoryPointer(); i <= p.getMemoryPointer()+p.getTotalInstructions(); i++){
-                    if(idComp.getRam().getSpace() == null){
-                        idComp.getRam().getSpace()[i] = p.getId();
-                    }}
-                this.processList.append(p);
-                p.setMemoryPointer(memoryPt);
-                switch(idComp.getPolitica()){
-                case FCFS:
-                    FcfsScheduler scheduler = new FcfsScheduler();
-                    scheduler.addProcess(p);
-            
-                case ROUND_ROBIN:
-                    RoundRobinScheduler scheduler1 = new RoundRobinScheduler();
-                    scheduler1.addProcess(p);
-                    
-                case EDF:
-                    EdfScheduler scheduler2 = new EdfScheduler();
-                    scheduler2.addProcess(p);
-                    
-                case PRIORITY_PREEMPTIVE:
-                    PreemptivePriorityScheduler scheduler3 = new PreemptivePriorityScheduler();
-                    scheduler3.addProcess(p);
-            }
-                return "Se ha creado el proceso";
-            }
-            return "Falta de memoria. Intente de nuevo.";
-        
-        }else{
-        
-        
-        
-        }
-    
-        return "Se ha añadido el proceso a la cola de nuevo";
-    
-    }
-    
-    public boolean isMemoryTotallyUsed(Computer com, int memoria){
-        int memoryNotUsed = com.getRam().getTotalSize() - com.getRam().getUsedSize();
-        return memoryNotUsed >= memoria;
-    }
-    
-    public void verificateRAMSpaceForNew(Computer com, ProcessControlBlock p){
-        int memoryNotUsed = com.getRam().getTotalSize() - com.getRam().getUsedSize();
-        if(memoryNotUsed >= p.getAssignedMemory()){
-            this.readyQueue.enqueue(p);
+
+        p.setComputerId(com.getId());
+
+        if (com.getMemoryManager() != null && com.getMemoryManager().hasAvailableMemory(p.getAssignedMemory())) {
+            com.getMemoryManager().allocateMemory(p.getAssignedMemory());
             p.setState(ProcessState.LISTO);
+            p.setBlockReason(BlockReason.NONE);
+            this.newQueue.removeElement(p);
+            this.readyQueue.enqueue(p);
+            return true;
+        } else {
+            p.setState(ProcessState.NUEVO);
+            this.newQueue.enqueue(p);
+            return false;
         }
     }
-    
-    public void dispatch(Computer com, ProcessControlBlock p){
-        if(this.readyQueue.isEmpty()){
-            if(!this.blockedQueue.isEmpty()){
-                this.blockedQueue.peek().setState(ProcessState.EJECUTANDO);
-                this.blockedQueue.dequeue();
+
+    /**
+     * Evalúa la admisión de procesos en espera en la cola de nuevos (FIFO estricto).
+     * Se invoca automáticamente tras la liberación de memoria al terminar un proceso.
+     * 
+     * @param com Computador anfitrión.
+     * @return Cantidad de procesos admitidos a la cola de listos.
+     */
+    public int evaluateNewQueueAdmission(Computer com) {
+        if (com == null || this.newQueue == null || this.newQueue.isEmpty()) {
+            return 0;
+        }
+
+        int admittedCount = 0;
+        while (!this.newQueue.isEmpty()) {
+            ProcessControlBlock nextNew = this.newQueue.peek();
+            if (com.getMemoryManager() != null && com.getMemoryManager().hasAvailableMemory(nextNew.getAssignedMemory())) {
+                this.newQueue.dequeue();
+                com.getMemoryManager().allocateMemory(nextNew.getAssignedMemory());
+                nextNew.setState(ProcessState.LISTO);
+                nextNew.setBlockReason(BlockReason.NONE);
+                this.readyQueue.enqueue(nextNew);
+                admittedCount++;
+            } else {
+                // FIFO estricto: si el primer proceso en espera no cabe, se detiene la admisión
+                break;
             }
-        }else{
-            switch(com.getPolitica()){
-                case FCFS:
-                    FcfsScheduler scheduler = new FcfsScheduler();
-                    scheduler.scheduleNext(this.readyQueue, p);
-            
-                case ROUND_ROBIN:
-                    RoundRobinScheduler scheduler1 = new RoundRobinScheduler();
-                    scheduler1.scheduleNext(this.readyQueue, p);
-                    
-                case EDF:
-                    EdfScheduler scheduler2 = new EdfScheduler();
-                    scheduler2.scheduleNext(this.readyQueue, p);
-                    
-                case PRIORITY_PREEMPTIVE:
-                    PreemptivePriorityScheduler scheduler3 = new PreemptivePriorityScheduler();
-                    scheduler3.scheduleNext(this.readyQueue, p);
-            }
-            com.getCpu().setPCB(p);
+        }
+        return admittedCount;
+    }
+
+    /**
+     * Crea un proceso y gestiona su admisión formal a través del planificador a largo plazo.
+     */
+    public String gestionCreateProcess(Computer idComp, boolean asignacionManual, int memoryPt) {
+        ProcessControlBlock p = new ProcessControlBlock();
+        p.setMemoryPointer(memoryPt);
+        return gestionCreateProcess(idComp, p);
+    }
+
+    public String gestionCreateProcess(Computer idComp, ProcessControlBlock p) {
+        if (idComp == null || p == null) {
+            return "Error: Computador o proceso inválido.";
+        }
+
+        this.processList.append(p);
+
+        boolean admitido = admitProcess(idComp, p);
+        if (admitido) {
+            return "Se ha creado el proceso y admitido a la cola de listos.";
+        } else {
+            return "Memoria insuficiente: Proceso en cola de NUEVOS en espera de RAM.";
         }
     }
-    
-    
-    
-    public void terminateFatherProcess(int fatherId){
+
+    public boolean isMemoryTotallyUsed(Computer com, int memoria) {
+        if (com == null || com.getMemoryManager() == null) {
+            return false;
+        }
+        return com.getMemoryManager().hasAvailableMemory(memoria);
+    }
+
+    public void verificateRAMSpaceForNew(Computer com, ProcessControlBlock p) {
+        if (com != null && p != null && com.getMemoryManager() != null) {
+            if (com.getMemoryManager().hasAvailableMemory(p.getAssignedMemory())) {
+                com.getMemoryManager().allocateMemory(p.getAssignedMemory());
+                this.newQueue.removeElement(p);
+                this.readyQueue.enqueue(p);
+                p.setState(ProcessState.LISTO);
+            }
+        }
+    }
+
+    /**
+     * Despacha el siguiente proceso de la cola de listos a la CPU usando la política activa.
+     */
+    public void dispatch(Computer com, ProcessControlBlock p) {
+        if (com == null) {
+            return;
+        }
+
+        if (this.readyQueue.isEmpty()) {
+            if (com.getCpu() != null) {
+                com.getCpu().setPCB(null);
+            }
+            return;
+        }
+
+        IScheduler scheduler = getOrUpdateScheduler(com);
+        ProcessControlBlock currentRunning = (p != null && p.getState() == ProcessState.EJECUTANDO) ? p : null;
+        ProcessControlBlock next = scheduler.scheduleNext(this.readyQueue, currentRunning);
+
+        if (next != null) {
+            next.setState(ProcessState.EJECUTANDO);
+            if (com.getCpu() != null) {
+                com.getCpu().setPCB(next);
+                com.getCpu().setPC(next.getProgramCounter());
+                com.getCpu().setMAR(next.getMemoryAddressRegister());
+                com.getCpu().setMode(next.getMode() != null ? next.getMode() : ExecutionMode.USER);
+            }
+        }
+    }
+
+    private IScheduler getOrUpdateScheduler(Computer com) {
+        SchedulingPolicyType policy = (com != null && com.getPolitica() != null)
+                ? com.getPolitica()
+                : SchedulingPolicyType.FCFS;
+
+        if (this.activeScheduler == null || this.currentPolicy != policy) {
+            this.currentPolicy = policy;
+            switch (policy) {
+                case FCFS -> this.activeScheduler = new FcfsScheduler();
+                case ROUND_ROBIN -> this.activeScheduler = new RoundRobinScheduler(3);
+                case EDF -> this.activeScheduler = new EdfScheduler();
+                case PRIORITY_PREEMPTIVE -> this.activeScheduler = new PreemptivePriorityScheduler();
+                default -> this.activeScheduler = new FcfsScheduler();
+            }
+        }
+        return this.activeScheduler;
+    }
+
+    public void terminateFatherProcess(int fatherId) {
         for (int i = 1; i <= this.processList.size(); i++) {
             ProcessControlBlock proceso = this.processList.get(i);
             if (proceso != null && proceso.getIdFather() == fatherId) {
                 ProcessState estadoActual = proceso.getState();
-                if(estadoActual == ProcessState.BLOQUEADO){
+                if (estadoActual == ProcessState.BLOQUEADO) {
                     this.blockedQueue.removeElement(proceso);
-                } else if(estadoActual == ProcessState.LISTO){
+                } else if (estadoActual == ProcessState.LISTO) {
                     this.readyQueue.removeElement(proceso);
-                } else if(estadoActual == ProcessState.NUEVO){
+                } else if (estadoActual == ProcessState.NUEVO) {
                     this.newQueue.removeElement(proceso);
                 }
-                
+
                 proceso.setState(ProcessState.SALIENTE);
                 this.endedQueue.enqueue(proceso);
-                
+
                 this.processList.deletePos(i);
-                i--; 
+                i--;
             }
         }
-    
-    
-    
     }
-    
-    public void terminateProcess(ProcessControlBlock p){
-        if(p.getState() == ProcessState.BLOQUEADO){
+
+    public void terminateProcess(ProcessControlBlock p) {
+        terminateProcess(null, p);
+    }
+
+    public void terminateProcess(Computer com, ProcessControlBlock p) {
+        if (p == null) {
+            return;
+        }
+
+        if (p.getState() == ProcessState.BLOQUEADO) {
             this.blockedQueue.removeElement(p);
-        }else if(p.getState() == ProcessState.LISTO){
+        } else if (p.getState() == ProcessState.LISTO) {
             this.readyQueue.removeElement(p);
-        }else if(p.getState() == ProcessState.NUEVO){
+        } else if (p.getState() == ProcessState.NUEVO) {
             this.newQueue.removeElement(p);
         }
-        this.processList.deletePos(p.getId());
+
         p.setState(ProcessState.SALIENTE);
+        p.setBlockReason(BlockReason.NONE);
+        this.endedQueue.enqueue(p);
+
+        // Liberar la memoria RAM asignada al proceso
+        if (com != null && com.getMemoryManager() != null) {
+            com.getMemoryManager().freeMemory(p.getAssignedMemory());
+            // Disparar admisión automática de la cola de NUEVOS
+            evaluateNewQueueAdmission(com);
+        }
+
         terminateFatherProcess(p.getId());
-        // QUITAR DE LA RAM DE LA COMPUTADORA
-    
     }
-    
-    public void blockProcess(ProcessControlBlock p){
-        
 
-
+    /**
+     * Mueve un proceso a la cola de bloqueados y actualiza su estado.
+     */
+    public void blockProcess(ProcessControlBlock p) {
+        if (p == null) {
+            return;
+        }
+        p.setState(ProcessState.BLOQUEADO);
+        this.readyQueue.removeElement(p);
+        this.blockedQueue.enqueue(p);
     }
-    
-    public void blockedToReady(ProcessControlBlock p){
+
+    /**
+     * Desbloquea un proceso y lo retorna a la cola de listos.
+     */
+    public void blockedToReady(ProcessControlBlock p) {
+        if (p == null) {
+            return;
+        }
         this.blockedQueue.removeElement(p);
-        this.readyQueue.enqueue(p);
         p.setState(ProcessState.LISTO);
-    
-    }
-    
-    public String placeBufferRAM(Buffer buffer, Computer com){
-    int cantidad = buffer.getStorage();
-    if (com.getRam().getSpace() == null) {
-        return "Error: El espacio de la RAM no está inicializado.";
-    }
-    int ramTotalSize = com.getRam().getSpace().length;
-    int consecutiveFreeBlocks = 0;
-    int startIndex = -1;
-    for (int i = 0; i < ramTotalSize; i++) {
-        if (com.getRam().getSpace()[i] == 0) { 
-            if (consecutiveFreeBlocks == 0) {
-                startIndex = i; 
-            }
-            consecutiveFreeBlocks++;
-            if (consecutiveFreeBlocks == cantidad) {
-                break;
-            }
-        } else {
-            consecutiveFreeBlocks = 0;
-            startIndex = -1;
-        }
-    }
-    if (consecutiveFreeBlocks >= cantidad) {
-        for (int i = startIndex; i < startIndex + cantidad; i++) {
-            com.getRam().getSpace()[i] = buffer.getId()+1000;  //ESTO SE CAMBIARA LUEGO
-        }
-        return "Búfer ID " + buffer.getId() + " ubicado exitosamente en la RAM";
-    }
-    return "Falta de memoria contigua.";
+        p.setBlockReason(BlockReason.NONE);
+        this.readyQueue.enqueue(p);
     }
 
+    public String placeBufferRAM(Buffer buffer, Computer com) {
+        if (buffer == null || com == null) {
+            return "Error: Parámetros inválidos.";
+        }
+        int cantidad = buffer.getStorage();
+        if (com.getRam().getSpace() == null) {
+            return "Error: El espacio de la RAM no está inicializado.";
+        }
+
+        if (com.getMemoryManager() != null) {
+            if (!com.getMemoryManager().hasAvailableMemory(cantidad)) {
+                return "Falta de memoria para alojar el búfer en RAM.";
+            }
+            com.getMemoryManager().allocateMemory(cantidad);
+        }
+
+        int ramTotalSize = com.getRam().getSpace().length;
+        int consecutiveFreeBlocks = 0;
+        int startIndex = -1;
+        for (int i = 0; i < ramTotalSize; i++) {
+            if (com.getRam().getSpace()[i] == 0) {
+                if (consecutiveFreeBlocks == 0) {
+                    startIndex = i;
+                }
+                consecutiveFreeBlocks++;
+                if (consecutiveFreeBlocks == cantidad) {
+                    break;
+                }
+            } else {
+                consecutiveFreeBlocks = 0;
+                startIndex = -1;
+            }
+        }
+        if (consecutiveFreeBlocks >= cantidad) {
+            for (int i = startIndex; i < startIndex + cantidad; i++) {
+                com.getRam().getSpace()[i] = buffer.getId() + 1000;
+            }
+            return "Búfer ID " + buffer.getId() + " ubicado exitosamente en la RAM";
+        }
+        return "Búfer asignado contablemente en RAM.";
+    }
+
+    // --- GETTERS DE COLAS ---
+    public MyLinkedList<ProcessControlBlock> getProcessList() {
+        return processList;
+    }
+
+    public MyQueue<ProcessControlBlock> getBlockedQueue() {
+        return blockedQueue;
+    }
+
+    public MyQueue<ProcessControlBlock> getNewQueue() {
+        return newQueue;
+    }
+
+    public MyQueue<ProcessControlBlock> getReadyQueue() {
+        return readyQueue;
+    }
+
+    public MyQueue<ProcessControlBlock> getEndedQueue() {
+        return endedQueue;
+    }
+
+    public GlobalClock getClock() {
+        return clock;
+    }
+
+    public IScheduler getActiveScheduler() {
+        return activeScheduler;
+    }
 }
-    
-    
-    
-
-
-    
-   
-    

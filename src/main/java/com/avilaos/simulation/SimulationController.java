@@ -206,11 +206,11 @@ public class SimulationController implements IClockTickable {
                     boolean continueRunning = syncDriver.executeCycle(currentRunning, targetBuf);
                     if (!continueRunning) {
                         if (currentRunning.getState() == ProcessState.BLOQUEADO) {
-                            kernel.blockProcess(currentRunning);
-                            cpu.setPCB(null);
+                            // El kernel desaloja la CPU internamente
+                            kernel.blockProcess(comp, currentRunning);
                         } else if (currentRunning.getState() == ProcessState.SALIENTE) {
+                            // El kernel desaloja la CPU internamente
                             kernel.terminateProcess(comp, currentRunning);
-                            cpu.setPCB(null);
                         }
                     }
                 } else {
@@ -227,8 +227,8 @@ public class SimulationController implements IClockTickable {
 
             // Verificar terminación natural
             if (currentRunning.getState() == ProcessState.SALIENTE || currentRunning.getRemainingTime() <= 0) {
+                // El kernel desaloja la CPU internamente
                 kernel.terminateProcess(comp, currentRunning);
-                cpu.setPCB(null);
             }
         }
     }

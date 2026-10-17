@@ -236,6 +236,13 @@ public class ComputerKernel {
         p.setBlockReason(BlockReason.NONE);
         this.endedQueue.enqueue(p);
 
+        // Desalojar CPU si el proceso terminado estaba corriendo en ella
+        if (com != null && com.getCpu() != null
+                && com.getCpu().getPCB() != null
+                && com.getCpu().getPCB().getId() == p.getId()) {
+            com.getCpu().setPCB(null);
+        }
+
         // Liberar la memoria RAM asignada al proceso
         if (com != null && com.getMemoryManager() != null) {
             com.getMemoryManager().freeMemory(p.getAssignedMemory());
@@ -248,6 +255,7 @@ public class ComputerKernel {
 
     /**
      * Mueve un proceso a la cola de bloqueados y actualiza su estado.
+     * Versión sin Computer: usada internamente por ProducerConsumerDriver.
      */
     public void blockProcess(ProcessControlBlock p) {
         if (p == null) {
@@ -256,6 +264,23 @@ public class ComputerKernel {
         p.setState(ProcessState.BLOQUEADO);
         this.readyQueue.removeElement(p);
         this.blockedQueue.enqueue(p);
+    }
+
+    /**
+     * Mueve un proceso a bloqueados y desaloja la CPU si el proceso estaba corriendo ahí.
+     * El kernel es el único responsable de vaciar la CPU — no debe hacerlo la capa superior.
+     *
+     * @param com Computador anfitrión (para acceder a su CPU).
+     * @param p   Proceso a bloquear.
+     */
+    public void blockProcess(Computer com, ProcessControlBlock p) {
+        blockProcess(p); // lógica de colas
+        // Desalojar CPU si el proceso bloqueado estaba corriendo en ella
+        if (com != null && com.getCpu() != null
+                && com.getCpu().getPCB() != null
+                && com.getCpu().getPCB().getId() == p.getId()) {
+            com.getCpu().setPCB(null);
+        }
     }
 
     /**

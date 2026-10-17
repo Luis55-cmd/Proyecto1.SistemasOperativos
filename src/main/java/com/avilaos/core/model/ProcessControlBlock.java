@@ -18,6 +18,7 @@ public class ProcessControlBlock {
     private int id;
     private String name;
     private int computerId;
+    private int idFather;
 
     // Estados y métricas
     private ProcessState state;
@@ -44,6 +45,11 @@ public class ProcessControlBlock {
     private int cyclesPerOperation;
     private int requiredElements;
     private int processedElements;
+    
+    private int memoryPointer;
+    private int syncStage = 0;               
+    private int networkDelayRemaining = 0;   
+    private boolean networkDelayDone = false;
 
     /**
      * Constructor por defecto: asigna ID único generado automáticamente.
@@ -77,7 +83,7 @@ public class ProcessControlBlock {
      */
     public ProcessControlBlock(String name, int computerId, ProcessType type,
                                int totalInstructions, int assignedMemory,
-                               int priority, int deadline) {
+                               int priority, int deadline, int memoryPointer) {
         this();
         this.name = (name != null && !name.trim().isEmpty()) ? name : "Process-" + this.id;
         this.computerId = computerId;
@@ -88,17 +94,24 @@ public class ProcessControlBlock {
         this.priority = priority;
         this.deadline = deadline;
         this.remainingDeadline = deadline;
+        this.memoryPointer = memoryPointer;
     }
 
     /**
      * Constructor para procesos de sincronización (Productor / Consumidor).
+     * Recibe los datos comunes y los del buffer; crea un PCB con identidad propia.
+     * Delega al constructor estándar, que genera el ID e inicializa el contexto,
+     * y después completa los parámetros de sincronización. No reserva RAM ni encola.
+     * Sin ciclos; conserva CONSUMER si type es null y las reglas del nombre común.
+     * La validación adicional de rangos no forma parte de este constructor.
      */
     public ProcessControlBlock(String name, int computerId, ProcessType type,
                                int totalInstructions, int assignedMemory,
                                int priority, int deadline,
                                String targetBufferId, int cyclesPerOperation,
-                               int requiredElements) {
-        this(name, computerId, type, totalInstructions, assignedMemory, priority, deadline);
+                               int requiredElements, int memoryPointer) {
+        this(name, computerId, type != null ? type : ProcessType.CONSUMER,
+                totalInstructions, assignedMemory, priority, deadline, memoryPointer);
         this.targetBufferId = targetBufferId;
         this.cyclesPerOperation = cyclesPerOperation;
         this.requiredElements = requiredElements;
@@ -179,8 +192,48 @@ public class ProcessControlBlock {
     public static void resetIdGenerator(int initialValue) {
         ID_GENERATOR.set(initialValue);
     }
+    
+    public void incrementProcessedElements() {
+        this.processedElements++;
+    }
+
+    public void decrementNetworkDelay() {
+        if (this.networkDelayRemaining > 0) {
+            this.networkDelayRemaining--;
+        }
+    }
+    
+    public void decrementRemainingTime() {
+        if (this.remainingTime > 0) {
+            this.remainingTime--;
+            this.programCounter++;
+        }
+    }
+    
+    public int getSyncStage() {
+        return syncStage;
+    }
+
+    public void setSyncStage(int syncStage) {
+        this.syncStage = syncStage;
+    }
+
+    public int getNetworkDelayRemaining() {
+        return networkDelayRemaining;
+    }
+
+    public void setNetworkDelayRemaining(int networkDelayRemaining) {
+        this.networkDelayRemaining = networkDelayRemaining;
+    }
+
+    public boolean isNetworkDelayDone() {
+        return networkDelayDone;
+    }
 
     // --- GETTERS Y SETTERS ---
+    public void setNetworkDelayDone(boolean networkDelayDone) {    
+        this.networkDelayDone = networkDelayDone;
+    }
 
     public int getId() {
         return id;
@@ -348,6 +401,22 @@ public class ProcessControlBlock {
 
     public void setProcessedElements(int processedElements) {
         this.processedElements = processedElements;
+    }
+    
+    public int getIdFather() {
+        return idFather;
+    }
+
+    public void setIdFather(int idFather) {
+        this.idFather = idFather;
+    }
+
+    public int getMemoryPointer() {
+        return memoryPointer;
+    }
+
+    public void setMemoryPointer(int memoryPointer) {
+        this.memoryPointer = memoryPointer;
     }
 
     @Override

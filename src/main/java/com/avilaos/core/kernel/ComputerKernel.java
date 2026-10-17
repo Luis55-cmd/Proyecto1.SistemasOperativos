@@ -53,6 +53,7 @@ public class ComputerKernel {
                     if(idComp.getRam().getSpace() == null){
                         idComp.getRam().getSpace()[i] = p.getId();
                     }}
+                idComp.getRam().setUsedSize(idComp.getRam().getUsedSize()- p.getAssignedMemory());
                 this.processList.append(p);
                 p.setMemoryPointer(memoryPt);
                 switch(idComp.getPolitica()){
@@ -147,14 +148,13 @@ public class ComputerKernel {
                 
                 this.processList.deletePos(i);
                 i--; 
+
             }
         }
     
-    
-    
     }
     
-    public void terminateProcess(ProcessControlBlock p){
+    public void terminateProcess(ProcessControlBlock p, Computer com){
         if(p.getState() == ProcessState.BLOQUEADO){
             this.blockedQueue.removeElement(p);
         }else if(p.getState() == ProcessState.LISTO){
@@ -165,8 +165,11 @@ public class ComputerKernel {
         this.processList.deletePos(p.getId());
         p.setState(ProcessState.SALIENTE);
         terminateFatherProcess(p.getId());
-        // QUITAR DE LA RAM DE LA COMPUTADORA
-    
+        for (int i=p.getMemoryPointer(); i <= p.getMemoryPointer()+p.getTotalInstructions(); i++){
+                    if(com.getRam().getSpace() == null){
+                        com.getRam().getSpace()[i] = 0;
+                    }}
+        com.getRam().setUsedSize(com.getRam().getUsedSize()- p.getAssignedMemory());
     }
     
     public void blockProcess(ProcessControlBlock p){
@@ -208,11 +211,12 @@ public class ComputerKernel {
         for (int i = startIndex; i < startIndex + cantidad; i++) {
             com.getRam().getSpace()[i] = buffer.getId()+1000;  //ESTO SE CAMBIARA LUEGO
         }
+        com.getRam().setUsedSize(com.getRam().getUsedSize() + buffer.getSizeInMemory());
         return "Búfer ID " + buffer.getId() + " ubicado exitosamente en la RAM";
     }
     return "Falta de memoria contigua.";
     }
-
+    
 }
     
     

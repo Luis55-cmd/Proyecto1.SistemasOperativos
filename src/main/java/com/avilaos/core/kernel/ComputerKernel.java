@@ -5,6 +5,7 @@ import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.model.SchedulingPolicyType;
 import com.avilaos.core.scheduler.*;
+import com.avilaos.core.model.Buffer;
 /**
  
  */
@@ -48,6 +49,10 @@ public class ComputerKernel {
             int memoryAssigned = p.getAssignedMemory();
             if(isMemoryTotallyUsed(idComp,memoryAssigned)){
                 p.setComputerId(idComp.getId());
+                for (int i=p.getMemoryPointer(); i <= p.getMemoryPointer()+p.getTotalInstructions(); i++){
+                    if(idComp.getRam().getSpace() == null){
+                        idComp.getRam().getSpace()[i] = p.getId();
+                    }}
                 this.processList.append(p);
                 p.setMemoryPointer(memoryPt);
                 switch(idComp.getPolitica()){
@@ -72,7 +77,7 @@ public class ComputerKernel {
             return "Falta de memoria. Intente de nuevo.";
         
         }else{
-        // Luego se hace
+        
         
         
         }
@@ -124,27 +129,91 @@ public class ComputerKernel {
     
     
     
-    
     public void terminateFatherProcess(int fatherId){
-       for (int i = 0; i < this.processList.size(); i++) {
+        for (int i = 1; i <= this.processList.size(); i++) {
             ProcessControlBlock proceso = this.processList.get(i);
-            ProcessState estado = proceso.getState();
-            if(proceso.getIdFather() == fatherId){
-                proceso.setState(ProcessState.SALIENTE);
-                MyQueue<ProcessControlBlock> aux = new MyQueue();
-                if(proceso.getState() == ProcessState.BLOQUEADO){
-                    
-                
-                }else if(proceso.getState() == ProcessState.LISTO){
-                
-                
+            if (proceso != null && proceso.getIdFather() == fatherId) {
+                ProcessState estadoActual = proceso.getState();
+                if(estadoActual == ProcessState.BLOQUEADO){
+                    this.blockedQueue.removeElement(proceso);
+                } else if(estadoActual == ProcessState.LISTO){
+                    this.readyQueue.removeElement(proceso);
+                } else if(estadoActual == ProcessState.NUEVO){
+                    this.newQueue.removeElement(proceso);
                 }
+                
+                proceso.setState(ProcessState.SALIENTE);
+                this.endedQueue.enqueue(proceso);
+                
+                this.processList.deletePos(i);
+                i--; 
             }
+        }
+    
+    
+    
+    }
+    
+    public void terminateProcess(ProcessControlBlock p){
+        if(p.getState() == ProcessState.BLOQUEADO){
+            this.blockedQueue.removeElement(p);
+        }else if(p.getState() == ProcessState.LISTO){
+            this.readyQueue.removeElement(p);
+        }else if(p.getState() == ProcessState.NUEVO){
+            this.newQueue.removeElement(p);
+        }
+        this.processList.deletePos(p.getId());
+        p.setState(ProcessState.SALIENTE);
+        terminateFatherProcess(p.getId());
+        // QUITAR DE LA RAM DE LA COMPUTADORA
+    
+    }
+    
+    public void blockProcess(ProcessControlBlock p){
+        
+
+
+    }
+    
+    public void blockedToReady(ProcessControlBlock p){
+        this.blockedQueue.removeElement(p);
+        this.readyQueue.enqueue(p);
+        p.setState(ProcessState.LISTO);
+    
+    }
+    
+    public String placeBufferRAM(Buffer buffer, Computer com){
+    int cantidad = buffer.getStorage();
+    if (com.getRam().getSpace() == null) {
+        return "Error: El espacio de la RAM no está inicializado.";
+    }
+    int ramTotalSize = com.getRam().getSpace().length;
+    int consecutiveFreeBlocks = 0;
+    int startIndex = -1;
+    for (int i = 0; i < ramTotalSize; i++) {
+        if (com.getRam().getSpace()[i] == 0) { 
+            if (consecutiveFreeBlocks == 0) {
+                startIndex = i; 
+            }
+            consecutiveFreeBlocks++;
+            if (consecutiveFreeBlocks == cantidad) {
+                break;
+            }
+        } else {
+            consecutiveFreeBlocks = 0;
+            startIndex = -1;
+        }
+    }
+    if (consecutiveFreeBlocks >= cantidad) {
+        for (int i = startIndex; i < startIndex + cantidad; i++) {
+            com.getRam().getSpace()[i] = buffer.getId()+1000;  //ESTO SE CAMBIARA LUEGO
+        }
+        return "Búfer ID " + buffer.getId() + " ubicado exitosamente en la RAM";
+    }
+    return "Falta de memoria contigua.";
+    }
+
 }
-    
-    
-    
-    }}
     
     
     

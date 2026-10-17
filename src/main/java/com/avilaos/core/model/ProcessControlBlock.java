@@ -47,6 +47,9 @@ public class ProcessControlBlock {
     private int processedElements;
     
     private int memoryPointer;
+    private int syncStage = 0;               
+    private int networkDelayRemaining = 0;   
+    private boolean networkDelayDone = false;
 
     /**
      * Constructor por defecto: asigna ID único generado automáticamente.
@@ -189,8 +192,48 @@ public class ProcessControlBlock {
     public static void resetIdGenerator(int initialValue) {
         ID_GENERATOR.set(initialValue);
     }
+    
+    public void incrementProcessedElements() {
+        this.processedElements++;
+    }
+
+    public void decrementNetworkDelay() {
+        if (this.networkDelayRemaining > 0) {
+            this.networkDelayRemaining--;
+        }
+    }
+    
+    public void decrementRemainingTime() {
+        if (this.remainingTime > 0) {
+            this.remainingTime--;
+            this.programCounter++;
+        }
+    }
+    
+    public int getSyncStage() {
+        return syncStage;
+    }
+
+    public void setSyncStage(int syncStage) {
+        this.syncStage = syncStage;
+    }
+
+    public int getNetworkDelayRemaining() {
+        return networkDelayRemaining;
+    }
+
+    public void setNetworkDelayRemaining(int networkDelayRemaining) {
+        this.networkDelayRemaining = networkDelayRemaining;
+    }
+
+    public boolean isNetworkDelayDone() {
+        return networkDelayDone;
+    }
 
     // --- GETTERS Y SETTERS ---
+    public void setNetworkDelayDone(boolean networkDelayDone) {    
+        this.networkDelayDone = networkDelayDone;
+    }
 
     public int getId() {
         return id;

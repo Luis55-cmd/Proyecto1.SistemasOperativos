@@ -74,4 +74,27 @@ public class MyQueue<T> {
         }
         return this.pFirst.data;
     }
+    
+    public boolean removeElement(T data) {
+        if (isEmpty()) {
+            return false;
+        }
+        if (this.pFirst.data.equals(data)) {
+            dequeue();
+            return true;
+        }
+        Node<T> current = this.pFirst;
+        while (current.pNext != null) {
+            if (current.pNext.data.equals(data)) {
+                current.pNext = current.pNext.pNext;
+                if (current.pNext == null) {
+                    this.pLast = current;
+                }
+                this.size--;
+                return true;
+            }
+            current = current.pNext;
+        }
+    return false; 
+}
 }

@@ -11,12 +11,12 @@ package com.avilaos;
 public class RAM {
     private int totalSize;
     int usedSize;
-    private volatile Object[] space;
+    private volatile int[] space;
     
     public RAM(int totalSize, int usedSize, int[] space){
     this.totalSize = totalSize;
     this.usedSize = 0;
-    this.space = new Object[totalSize];
+    this.space = new int[totalSize];
     }
 
     public int getTotalSize() {
@@ -35,11 +35,11 @@ public class RAM {
         this.usedSize = usedSize;
     }
 
-    public Object[] getSpace() {
+    public int[] getSpace() {
         return space;
     }
 
-    public void setSpace(Object[] space) {
+    public void setSpace(int[] space) {
         this.space = space;
     }
     

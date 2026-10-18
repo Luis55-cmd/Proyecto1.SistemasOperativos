@@ -3,10 +3,8 @@ package com.avilaos.simulation;
 import com.avilaos.core.kernel.ComputerKernel;
 import com.avilaos.core.kernel.GlobalClock;
 import com.avilaos.core.kernel.IClockTickable;
-import com.avilaos.core.model.BlockReason;
 import com.avilaos.core.model.ExecutionMode;
 import com.avilaos.core.model.ProcessControlBlock;
-import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.model.ProcessType;
 import com.avilaos.core.model.SchedulingPolicyType;
 import com.avilaos.core.structures.MyLinkedList;
@@ -167,117 +165,9 @@ public class SimulationController implements IClockTickable {
     public synchronized void tick(int currentCycle) {
         for (int i = 0; i < this.computers.size(); i++) {
             Computer comp = this.computers.get(i);
-            if (comp != null) {
-                stepComputerCycle(comp, currentCycle);
+            if (comp != null && comp.getKernel() != null) {
+                comp.getKernel().executeCycle(comp, currentCycle, this.syncDriver, this.buffers);
             }
-        }
-    }
-
-    /**
-     * Ejecuta exactamente un ciclo temporal sobre el computador dado.
-     */
-    private void stepComputerCycle(Computer comp, int currentCycle) {
-        ComputerKernel kernel = comp.getKernel();
-        CPU cpu = comp.getCpu();
-        if (kernel == null || cpu == null) {
-            return;
-        }
-
-        // 1. Notificar al planificador el paso del tick (e.g. quantum en Round Robin)
-        if (kernel.getActiveScheduler() != null) {
-            kernel.getActiveScheduler().onClockTick();
-        }
-
-        // 2. Decrementar deadlines y verificar abortos (D-07, D-13)
-        checkDeadlines(comp, currentCycle);
-
-        // 3. Despachar si la CPU está libre
-        ProcessControlBlock currentRunning = cpu.getPCB();
-        if (currentRunning == null || currentRunning.getState() != ProcessState.EJECUTANDO) {
-            kernel.dispatch(comp, currentRunning);
-            currentRunning = cpu.getPCB();
-        }
-
-        // 4. Ejecutar 1 ciclo si hay un proceso en CPU
-        if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
-            if (currentRunning.getType() == ProcessType.PRODUCER || currentRunning.getType() == ProcessType.CONSUMER) {
-                Buffer targetBuf = getBufferById(parseBufferId(currentRunning.getTargetBufferId()));
-                if (targetBuf != null) {
-                    boolean continueRunning = syncDriver.executeCycle(currentRunning, targetBuf);
-                    if (!continueRunning) {
-                        if (currentRunning.getState() == ProcessState.BLOQUEADO) {
-                            // El kernel desaloja la CPU internamente
-                            kernel.blockProcess(comp, currentRunning);
-                        } else if (currentRunning.getState() == ProcessState.SALIENTE) {
-                            // El kernel desaloja la CPU internamente
-                            kernel.terminateProcess(comp, currentRunning);
-                        }
-                    }
-                } else {
-                    currentRunning.executeOneCycle(currentCycle);
-                }
-            } else {
-                currentRunning.executeOneCycle(currentCycle);
-            }
-
-            // Sincronizar registros hardware en la CPU
-            cpu.setPC(currentRunning.getProgramCounter());
-            cpu.setMAR(currentRunning.getMemoryAddressRegister());
-            cpu.setMode(currentRunning.getMode());
-
-            // Verificar terminación natural
-            if (currentRunning.getState() == ProcessState.SALIENTE || currentRunning.getRemainingTime() <= 0) {
-                // El kernel desaloja la CPU internamente
-                kernel.terminateProcess(comp, currentRunning);
-            }
-        }
-    }
-
-    /**
-     * Actualiza y verifica deadlines de procesos.
-     * Si vence el deadline (D-07, D-13), fuerza la terminación y libera recursos.
-     */
-    private void checkDeadlines(Computer comp, int currentCycle) {
-        ComputerKernel kernel = comp.getKernel();
-        if (kernel == null) return;
-
-        MyLinkedList<ProcessControlBlock> list = kernel.getProcessList();
-        for (int i = 0; i < list.size(); i++) {
-            ProcessControlBlock p = list.get(i);
-            if (p != null && p.getState() != ProcessState.SALIENTE && p.getState() != ProcessState.NUEVO) {
-                p.updateDeadlineOnTick(currentCycle);
-                if (p.getRemainingDeadline() <= 0) {
-                    cleanupProcessResources(p);
-                    kernel.terminateProcess(comp, p);
-                    if (comp.getCpu().getPCB() != null && comp.getCpu().getPCB().getId() == p.getId()) {
-                        comp.getCpu().setPCB(null);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * D-13 / Issue #26: Libera recursos retenidos si un proceso vence deadline en sección crítica.
-     */
-    private void cleanupProcessResources(ProcessControlBlock pcb) {
-        if (pcb == null) return;
-        if (pcb.getSyncStage() == 2 || pcb.getSyncStage() == 3) {
-            Buffer buf = getBufferById(parseBufferId(pcb.getTargetBufferId()));
-            if (buf != null && buf.getMutex() != null) {
-                buf.getMutex().release();
-            }
-        }
-    }
-
-    private int parseBufferId(String targetId) {
-        if (targetId == null || targetId.trim().isEmpty()) {
-            return 1;
-        }
-        try {
-            return Integer.parseInt(targetId.replaceAll("[^0-9]", ""));
-        } catch (NumberFormatException e) {
-            return 1;
         }
     }
 

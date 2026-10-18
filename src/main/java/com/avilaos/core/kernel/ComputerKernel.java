@@ -1,14 +1,17 @@
 package com.avilaos.core.kernel;
 
 import com.avilaos.hardware.Computer;
+import com.avilaos.hardware.CPU;
 import com.avilaos.core.structures.*;
 import com.avilaos.core.model.BlockReason;
 import com.avilaos.core.model.ExecutionMode;
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessState;
+import com.avilaos.core.model.ProcessType;
 import com.avilaos.core.model.SchedulingPolicyType;
 import com.avilaos.core.scheduler.*;
 import com.avilaos.sync.Buffer;
+import com.avilaos.sync.ProducerConsumerDriver;
 
 /**
  * Núcleo del computador simulado (Capa 1: Kernel).
@@ -336,6 +339,116 @@ public class ComputerKernel {
             return "Búfer ID " + buffer.getId() + " ubicado exitosamente en la RAM";
         }
         return "Búfer asignado contablemente en RAM.";
+    }
+
+    // =========================================================================
+    // CICLO DE EJECUCIÓN — único punto de acceso al hardware de CPU (ARC-06)
+    // =========================================================================
+
+    /**
+     * Ejecuta exactamente un ciclo temporal sobre el computador dado.
+     * Centraliza todo acceso a CPU en la capa del kernel:
+     * tick del scheduler, deadlines, despacho, ejecución y sync de registros.
+     */
+    public void executeCycle(Computer comp, int currentCycle,
+                             ProducerConsumerDriver syncDriver,
+                             MyLinkedList<Buffer> buffers) {
+        CPU cpu = comp.getCpu();
+        if (cpu == null) return;
+
+        // 1. Notificar al planificador (quantum Round Robin, etc.)
+        if (this.activeScheduler != null) {
+            this.activeScheduler.onClockTick();
+        }
+
+        // 2. Verificar y vencer deadlines (D-07, D-13)
+        checkDeadlines(comp, currentCycle, buffers);
+
+        // 3. Despachar si la CPU está libre
+        ProcessControlBlock currentRunning = cpu.getPCB();
+        if (currentRunning == null || currentRunning.getState() != ProcessState.EJECUTANDO) {
+            dispatch(comp, currentRunning);
+            currentRunning = cpu.getPCB();
+        }
+
+        // 4. Ejecutar 1 ciclo si hay un proceso en CPU
+        if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
+            if (currentRunning.getType() == ProcessType.PRODUCER
+                    || currentRunning.getType() == ProcessType.CONSUMER) {
+                Buffer targetBuf = findBufferById(
+                        parseBufferId(currentRunning.getTargetBufferId()), buffers);
+                if (targetBuf != null) {
+                    boolean continueRunning = syncDriver.executeCycle(currentRunning, targetBuf);
+                    if (!continueRunning) {
+                        if (currentRunning.getState() == ProcessState.BLOQUEADO) {
+                            blockProcess(comp, currentRunning);
+                        } else if (currentRunning.getState() == ProcessState.SALIENTE) {
+                            terminateProcess(comp, currentRunning);
+                        }
+                    }
+                } else {
+                    currentRunning.executeOneCycle(currentCycle);
+                }
+            } else {
+                currentRunning.executeOneCycle(currentCycle);
+            }
+
+            // Sincronizar registros hardware — solo el kernel toca la CPU
+            if (cpu.getPCB() != null) {
+                cpu.setPC(currentRunning.getProgramCounter());
+                cpu.setMAR(currentRunning.getMemoryAddressRegister());
+                cpu.setMode(currentRunning.getMode());
+            }
+
+            // Verificar terminación natural
+            if (currentRunning.getState() == ProcessState.SALIENTE
+                    || currentRunning.getRemainingTime() <= 0) {
+                terminateProcess(comp, currentRunning);
+            }
+        }
+    }
+
+    private void checkDeadlines(Computer comp, int currentCycle, MyLinkedList<Buffer> buffers) {
+        for (int i = 0; i < this.processList.size(); i++) {
+            ProcessControlBlock p = this.processList.get(i);
+            if (p != null
+                    && p.getState() != ProcessState.SALIENTE
+                    && p.getState() != ProcessState.NUEVO) {
+                p.updateDeadlineOnTick(currentCycle);
+                if (p.getRemainingDeadline() <= 0) {
+                    cleanupProcessResources(p, buffers);
+                    terminateProcess(comp, p);
+                }
+            }
+        }
+    }
+
+    private void cleanupProcessResources(ProcessControlBlock pcb, MyLinkedList<Buffer> buffers) {
+        if (pcb == null) return;
+        if (pcb.getSyncStage() == 2 || pcb.getSyncStage() == 3) {
+            Buffer buf = findBufferById(parseBufferId(pcb.getTargetBufferId()), buffers);
+            if (buf != null && buf.getMutex() != null) {
+                buf.getMutex().release();
+            }
+        }
+    }
+
+    private Buffer findBufferById(int id, MyLinkedList<Buffer> buffers) {
+        if (buffers == null) return null;
+        for (int i = 0; i < buffers.size(); i++) {
+            Buffer b = buffers.get(i);
+            if (b != null && b.getId() == id) return b;
+        }
+        return null;
+    }
+
+    private int parseBufferId(String targetId) {
+        if (targetId == null || targetId.trim().isEmpty()) return 1;
+        try {
+            return Integer.parseInt(targetId.replaceAll("[^0-9]", ""));
+        } catch (NumberFormatException e) {
+            return 1;
+        }
     }
 
     // --- GETTERS DE COLAS ---

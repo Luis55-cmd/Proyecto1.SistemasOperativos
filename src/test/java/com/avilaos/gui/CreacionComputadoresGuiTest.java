@@ -30,10 +30,24 @@ public class CreacionComputadoresGuiTest {
             nombre.setText("  Avila Norte  ");
             ((JToggleButton) buscar(panel, JToggleButton.class, "EDF")).doClick();
             crear.doClick(); crear.doClick();
+            if (controller.getComputers().size() != 1) throw new AssertionError("Aceptó duplicado");
+            nombre.setText(" avila norte ");
+            crear.doClick();
+            if (controller.getComputers().size() != 1) throw new AssertionError("Aceptó variante de nombre");
+            if (!(nombre.getBorder() instanceof javax.swing.border.LineBorder borde)
+                    || !borde.getLineColor().equals(new Color(166, 44, 38))) throw new AssertionError("Falta borde rojo");
+            try {
+                controller.createComputer("AVILA NORTE", 128, SchedulingPolicyType.FCFS);
+                throw new AssertionError("Controlador aceptó duplicado directo");
+            } catch (IllegalArgumentException expected) {
+                if (!expected.getMessage().equals("Asegúrate de usar un nombre único")) throw new AssertionError("Mensaje");
+            }
+            nombre.setText("Avila Sur");
+            crear.doClick();
             if (controller.getComputers().size() != 2) throw new AssertionError("Faltan instancias");
             var a = controller.getComputers().get(0);
             var b = controller.getComputers().get(1);
-            if (a.getId() == b.getId() || !a.getName().equals("Avila Norte")) throw new AssertionError("Identidad/nombre");
+            if (b.getId() != a.getId() + 1 || !a.getName().equals("Avila Norte")) throw new AssertionError("Identidad/nombre");
             if (a.getRam().getTotalSize() != 128 || a.getPolitica() != SchedulingPolicyType.EDF) throw new AssertionError("Configuración");
             JTable tabla = (JTable) buscar(panel, JTable.class, null);
             if (tabla.getRowCount() != 2 || !tabla.getValueAt(0, 1).equals(a.getName())) throw new AssertionError("Tabla");

@@ -23,6 +23,8 @@ public class PanelPrincipal extends JPanel {
     private Destino destinoActual;
     private final SimulationController controller = SimulationController.getInstance();
     private final JTextField nombreComputador = new JTextField();
+    private final javax.swing.border.Border bordeNombreNormal = nombreComputador.getBorder();
+    private final JLabel errorNombre = texto(" ", 12, new Color(166, 44, 38), false);
     private SchedulingPolicyType politicaSeleccionada = SchedulingPolicyType.FCFS;
     private final JLabel resultadoComputador = texto("Todavía no has creado computadores desde esta vista.", 12, GRIS, false);
     // Modelo visual Swing: sólo copia datos para mostrarlos, no almacena el dominio.
@@ -138,13 +140,16 @@ public class PanelPrincipal extends JPanel {
     private JPanel computador() {
         JPanel panel = pagina("COMPUTADORES", "Configura un computador", "Cada computador tendrá su propia CPU, memoria y política.");
         JPanel tarjeta = tarjeta();
-        tarjeta.setMaximumSize(new Dimension(Integer.MAX_VALUE, 320));
+        tarjeta.setMaximumSize(new Dimension(Integer.MAX_VALUE, 340));
         tarjeta.add(texto("Recursos del computador", 20, TINTA, true));
         tarjeta.add(Box.createVerticalStrut(16));
         JPanel nombre = campo("Nombre del computador", nombreComputador);
         nombre.setAlignmentX(LEFT_ALIGNMENT);
         nombre.setMaximumSize(new Dimension(400, 62));
         tarjeta.add(nombre);
+        errorNombre.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+        tarjeta.add(Box.createVerticalStrut(4));
+        tarjeta.add(errorNombre);
         tarjeta.add(Box.createVerticalStrut(24));
         JPanel campos = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         campos.setOpaque(false);
@@ -231,11 +236,22 @@ public class PanelPrincipal extends JPanel {
      * No arranca reloj. Conexión: listener → createComputer → actualizarListaComputadores.
      */
     private void crearComputadorDesdeFormulario(Integer ram) {
+        nombreComputador.setBorder(bordeNombreNormal);
+        errorNombre.setText(" ");
         if (ram == null || nombreComputador.getText().trim().isEmpty()) {
             resultadoComputador.setText("Escribe un nombre y selecciona la RAM.");
             return;
         }
-        Computer creado = controller.createComputer(nombreComputador.getText(), ram, politicaSeleccionada);
+        Computer creado;
+        try {
+            creado = controller.createComputer(nombreComputador.getText(), ram, politicaSeleccionada);
+        } catch (IllegalArgumentException error) {
+            nombreComputador.setBorder(BorderFactory.createLineBorder(new Color(166, 44, 38), 2));
+            errorNombre.setText(error.getMessage());
+            resultadoComputador.setText("No se creó otro computador.");
+            nombreComputador.requestFocusInWindow();
+            return;
+        }
         actualizarListaComputadores();
         resultadoComputador.setText("Creado: " + creado.getName() + " · ID " + creado.getId());
     }

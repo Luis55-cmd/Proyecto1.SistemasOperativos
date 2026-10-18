@@ -1,6 +1,10 @@
 package com.avilaos.gui;
 
 import java.awt.*;
+import com.avilaos.hardware.Computer;
+import com.avilaos.simulation.SimulationController;
+import com.avilaos.core.model.SchedulingPolicyType;
+import javax.swing.table.DefaultTableModel;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 
@@ -17,6 +21,15 @@ public class PanelPrincipal extends JPanel {
     private final JPanel pantallas = new JPanel(distribucion);
     private final JButton[] navegacion = new JButton[Destino.values().length];
     private Destino destinoActual;
+    private final SimulationController controller = SimulationController.getInstance();
+    private final JTextField nombreComputador = new JTextField();
+    private SchedulingPolicyType politicaSeleccionada = SchedulingPolicyType.FCFS;
+    private final JLabel resultadoComputador = texto("Todavía no has creado computadores desde esta vista.", 12, GRIS, false);
+    // Modelo visual Swing: sólo copia datos para mostrarlos, no almacena el dominio.
+    private final DefaultTableModel computadoresVisibles = new DefaultTableModel(
+            new String[]{"ID", "Nombre", "RAM", "Política"}, 0) {
+        @Override public boolean isCellEditable(int fila, int columna) { return false; }
+    };
 
     /** Entrada ninguna; construye una vez las vistas. Conecta botones → mostrarPanel.
      * El único recorrido crea los cuatro botones y termina al agotar Destino.values(). */
@@ -117,7 +130,7 @@ public class PanelPrincipal extends JPanel {
         opciones.add(equipos); opciones.add(programas);
         panel.add(opciones);
         panel.add(Box.createVerticalStrut(24));
-        panel.add(texto("Vista preliminar · Los formularios todavía no envían datos al simulador.", 12, GRIS, false));
+        panel.add(texto("Computadores conectados · El editor de procesos sigue siendo un borrador.", 12, GRIS, false));
         return panel;
     }
 
@@ -125,7 +138,13 @@ public class PanelPrincipal extends JPanel {
     private JPanel computador() {
         JPanel panel = pagina("COMPUTADORES", "Configura un computador", "Cada computador tendrá su propia CPU, memoria y política.");
         JPanel tarjeta = tarjeta();
+        tarjeta.setMaximumSize(new Dimension(Integer.MAX_VALUE, 320));
         tarjeta.add(texto("Recursos del computador", 20, TINTA, true));
+        tarjeta.add(Box.createVerticalStrut(16));
+        JPanel nombre = campo("Nombre del computador", nombreComputador);
+        nombre.setAlignmentX(LEFT_ALIGNMENT);
+        nombre.setMaximumSize(new Dimension(400, 62));
+        tarjeta.add(nombre);
         tarjeta.add(Box.createVerticalStrut(24));
         JPanel campos = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         campos.setOpaque(false);
@@ -145,8 +164,25 @@ public class PanelPrincipal extends JPanel {
         campos.add(politica);
         tarjeta.add(campos);
         tarjeta.add(Box.createVerticalStrut(22));
-        tarjeta.add(texto("La creación del computador se conectará al kernel en el siguiente paso.", 13, GRIS, false));
+        JButton crear = accion("Crear computador", true);
+        // ENTRADA: clic → captura del formulario → controlador → lista visible.
+        crear.addActionListener(e -> crearComputadorDesdeFormulario((Integer) ram.getSelectedItem()));
+        tarjeta.add(crear);
+        tarjeta.add(Box.createVerticalStrut(10));
+        resultadoComputador.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+        tarjeta.add(resultadoComputador);
         panel.add(tarjeta);
+        panel.add(Box.createVerticalStrut(20));
+        JTable tabla = new JTable(computadoresVisibles);
+        tabla.setRowHeight(32);
+        tabla.setBackground(PAPEL);
+        tabla.setForeground(TINTA);
+        JScrollPane lista = new JScrollPane(tabla);
+        lista.setColumnHeaderView(tabla.getTableHeader());
+        lista.setAlignmentX(LEFT_ALIGNMENT);
+        lista.setPreferredSize(new Dimension(600, 160));
+        panel.add(lista);
+        actualizarListaComputadores();
         return panel;
     }
 
@@ -170,6 +206,14 @@ public class PanelPrincipal extends JPanel {
             boton.setForeground(TINTA);
             boton.setBorder(BorderFactory.createLineBorder(BORDE));
             boton.addItemListener(e -> {
+                if (boton.isSelected()) {
+                    politicaSeleccionada = switch (nombre) {
+                        case "Round Robin" -> SchedulingPolicyType.ROUND_ROBIN;
+                        case "EDF" -> SchedulingPolicyType.EDF;
+                        case "Prioridades" -> SchedulingPolicyType.PRIORITY_PREEMPTIVE;
+                        default -> SchedulingPolicyType.FCFS;
+                    };
+                }
                 boton.setBackground(boton.isSelected() ? ACENTO : PAPEL);
                 boton.setForeground(boton.isSelected() ? Color.WHITE : TINTA);
             });
@@ -178,6 +222,37 @@ public class PanelPrincipal extends JPanel {
             boton.setSelected("FCFS".equals(nombre));
         }
         return opciones;
+    }
+
+    /**
+     * Entrada RAM del selector, nombre y política del formulario; salida void.
+     * Valida nombre/RAM antes de delegar. Crea UNA instancia y actualiza filas/mensaje.
+     * Sin ciclos. Error de validación: mensaje y ningún computador nuevo.
+     * No arranca reloj. Conexión: listener → createComputer → actualizarListaComputadores.
+     */
+    private void crearComputadorDesdeFormulario(Integer ram) {
+        if (ram == null || nombreComputador.getText().trim().isEmpty()) {
+            resultadoComputador.setText("Escribe un nombre y selecciona la RAM.");
+            return;
+        }
+        Computer creado = controller.createComputer(nombreComputador.getText(), ram, politicaSeleccionada);
+        actualizarListaComputadores();
+        resultadoComputador.setText("Creado: " + creado.getName() + " · ID " + creado.getId());
+    }
+
+    /**
+     * Entrada: computadores del controlador; salida: filas de la tabla.
+     * Reemplaza la copia visual; no modifica computadores ni reloj. Usar en EDT.
+     * Recorre índices 0..size-1, termina al alcanzar size. Lista vacía: cero filas.
+     * Sin recuperación de errores internos: sólo se usa con el controlador inicializado.
+     */
+    private void actualizarListaComputadores() {
+        computadoresVisibles.setRowCount(0);
+        for (int i = 0; i < controller.getComputers().size(); i++) {
+            Computer c = controller.getComputers().get(i);
+            computadoresVisibles.addRow(new Object[]{c.getId(), c.getName(),
+                    c.getRam().getTotalSize(), c.getPolitica()});
+        }
     }
 
     // Ayudas de presentación: reciben texto/componentes y devuelven contenedores nuevos.

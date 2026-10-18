@@ -39,25 +39,45 @@ public class NetworkSimulator {
 
     public boolean handleDelay(ProcessControlBlock pcb, Buffer buffer) {
         if (!isRemoteAccess(pcb, buffer) || latencyCycles <= 0) {
+            pcb.setNetworkDelayRemaining(0);
+            pcb.setNetworkDelayDone(true);
             return true; // Acceso local o sin latencia
         }
 
-        if (pcb.getNetworkDelayRemaining() > 0) {
-            pcb.decrementNetworkDelay();
-            if (pcb.getNetworkDelayRemaining() == 0) {
-                pcb.setNetworkDelayDone(true);
-                pcb.setState(ProcessState.LISTO);
-                pcb.setBlockReason(BlockReason.NONE);
-            }
+        // Si ya completó la latencia requerida para esta solicitud, puede proceder
+        if (pcb.isNetworkDelayDone()) {
             return true;
-        } else if (pcb.getSyncStage() == 0 && !pcb.isNetworkDelayDone()) {
-            pcb.setNetworkDelayRemaining(this.latencyCycles);
-            pcb.setNetworkDelayDone(true);
-            pcb.setState(ProcessState.BLOQUEADO);
-            pcb.setBlockReason(BlockReason.NETWORK_LATENCY);
-            return false;
         }
 
-        return true;
+        // Si aún no ha iniciado la espera de latencia, se inicializa y bloquea
+        if (pcb.getNetworkDelayRemaining() <= 0) {
+            pcb.setNetworkDelayRemaining(this.latencyCycles);
+        }
+        pcb.setNetworkDelayDone(false);
+        pcb.setState(ProcessState.BLOQUEADO);
+        pcb.setBlockReason(BlockReason.NETWORK_LATENCY);
+        return false; // Proceso bloqueado, no permitir operación de buffer durante la espera
+    }
+
+    /**
+     * Avanza un tick en la demora de red para un proceso pendiente.
+     * Si la demora se completa en este ciclo, marca networkDelayDone como true.
+     *
+     * @param pcb Proceso bloqueado esperando latencia de red.
+     * @return true si la demora de red se completó y debe retornar a LISTO; false si aún debe esperar.
+     */
+    public boolean stepDelay(ProcessControlBlock pcb) {
+        if (pcb == null || pcb.getState() == ProcessState.SALIENTE) {
+            return false;
+        }
+        if (pcb.getNetworkDelayRemaining() > 0) {
+            pcb.decrementNetworkDelay();
+        }
+        if (pcb.getNetworkDelayRemaining() <= 0) {
+            pcb.setNetworkDelayRemaining(0);
+            pcb.setNetworkDelayDone(true);
+            return true;
+        }
+        return false;
     }
 }

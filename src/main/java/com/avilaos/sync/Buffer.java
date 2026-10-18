@@ -3,6 +3,10 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package com.avilaos.sync;
+
+import com.avilaos.core.model.BlockReason;
+import com.avilaos.core.model.ProcessControlBlock;
+import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.structures.*;
 import java.util.concurrent.Semaphore;
 /**
@@ -20,6 +24,10 @@ public class Buffer {
     MyQueue<Object> datos;
     private int produced;
     private int comsumed;
+
+    private final MyQueue<ProcessControlBlock> waitingMutex = new MyQueue<>();
+    private final MyQueue<ProcessControlBlock> waitingVacios = new MyQueue<>();
+    private final MyQueue<ProcessControlBlock> waitingLlenos = new MyQueue<>();
 
     public Buffer(Semaphore mutex, Semaphore vacios, Semaphore llenos, int idComp, int storage, int id, MyQueue<Object> datos,  int sizeInMemory) {
         this.mutex = new Semaphore(1, true);
@@ -128,7 +136,77 @@ public class Buffer {
     public void setComsumed(int comsumed) {
         this.comsumed = comsumed;
     }
-    
-    
-    
+
+    public synchronized void registerWaitingMutex(ProcessControlBlock pcb) {
+        if (pcb == null) return;
+        this.waitingMutex.removeElement(pcb);
+        this.waitingMutex.enqueue(pcb);
+    }
+
+    public synchronized ProcessControlBlock pollWaitingMutex() {
+        while (!this.waitingMutex.isEmpty()) {
+            ProcessControlBlock p = this.waitingMutex.dequeue();
+            if (p != null
+                    && p.getState() == ProcessState.BLOQUEADO
+                    && p.getBlockReason() == BlockReason.WAITING_MUTEX) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    public synchronized void registerWaitingVacios(ProcessControlBlock pcb) {
+        if (pcb == null) return;
+        this.waitingVacios.removeElement(pcb);
+        this.waitingVacios.enqueue(pcb);
+    }
+
+    public synchronized ProcessControlBlock pollWaitingVacios() {
+        while (!this.waitingVacios.isEmpty()) {
+            ProcessControlBlock p = this.waitingVacios.dequeue();
+            if (p != null
+                    && p.getState() == ProcessState.BLOQUEADO
+                    && p.getBlockReason() == BlockReason.WAITING_FULL_BUFFER) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    public synchronized void registerWaitingLlenos(ProcessControlBlock pcb) {
+        if (pcb == null) return;
+        this.waitingLlenos.removeElement(pcb);
+        this.waitingLlenos.enqueue(pcb);
+    }
+
+    public synchronized ProcessControlBlock pollWaitingLlenos() {
+        while (!this.waitingLlenos.isEmpty()) {
+            ProcessControlBlock p = this.waitingLlenos.dequeue();
+            if (p != null
+                    && p.getState() == ProcessState.BLOQUEADO
+                    && p.getBlockReason() == BlockReason.WAITING_EMPTY_BUFFER) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    public synchronized void removeWaitingProcess(ProcessControlBlock pcb) {
+        if (pcb == null) return;
+        this.waitingMutex.removeElement(pcb);
+        this.waitingVacios.removeElement(pcb);
+        this.waitingLlenos.removeElement(pcb);
+    }
+
+    public MyQueue<ProcessControlBlock> getWaitingMutex() {
+        return waitingMutex;
+    }
+
+    public MyQueue<ProcessControlBlock> getWaitingVacios() {
+        return waitingVacios;
+    }
+
+    public MyQueue<ProcessControlBlock> getWaitingLlenos() {
+        return waitingLlenos;
+    }
 }

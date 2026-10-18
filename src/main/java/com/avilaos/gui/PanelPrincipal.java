@@ -21,6 +21,8 @@ public class PanelPrincipal extends JPanel {
     private final JPanel pantallas = new JPanel(distribucion);
     private final JButton[] navegacion = new JButton[Destino.values().length];
     private Destino destinoActual;
+    private final EditorProceso editorProceso;
+    private final MonitorSimulacion monitor;
     private final SimulationController controller = SimulationController.getInstance();
     private final JTextField nombreComputador = new JTextField();
     private final javax.swing.border.Border bordeNombreNormal = nombreComputador.getBorder();
@@ -66,14 +68,10 @@ public class PanelPrincipal extends JPanel {
         pantallas.setBackground(FONDO);
         pantallas.add(inicio(), Destino.MENU.name());
         pantallas.add(computador(), Destino.COMPUTADOR.name());
-        pantallas.add(new EditorProceso(), Destino.PROCESO.name());
-        JPanel simulacion = pagina("SIMULACIÓN", "Observa el sistema", "CPU, memoria y colas en un mismo lugar.");
-        JPanel espera = tarjeta();
-        espera.add(texto("El motor aún no está conectado", 21, TINTA, true));
-        espera.add(Box.createVerticalStrut(12));
-        espera.add(texto("Esta vista recibirá el estado de tus computadores.", 14, GRIS, false));
-        simulacion.add(espera);
-        pantallas.add(simulacion, Destino.SIMULACION.name());
+        editorProceso = new EditorProceso(() -> mostrarPanel(Destino.COMPUTADOR));
+        pantallas.add(editorProceso, Destino.PROCESO.name());
+        monitor = new MonitorSimulacion(controller, () -> mostrarPanel(Destino.COMPUTADOR));
+        pantallas.add(monitor, Destino.SIMULACION.name());
         add(pantallas, BorderLayout.CENTER);
         mostrarPanel(Destino.MENU);
     }
@@ -84,6 +82,8 @@ public class PanelPrincipal extends JPanel {
      * Usar en EDT. Caso normal: muestra PROCESO; error null: conserva pantalla actual. */
     public void mostrarPanel(Destino destino) {
         if (destino == null) throw new IllegalArgumentException("Destino de navegación requerido");
+        if (destino == Destino.PROCESO) editorProceso.actualizarComputadores(controller);
+        if (destino == Destino.SIMULACION) monitor.actualizarVista();
         distribucion.show(pantallas, destino.name());
         destinoActual = destino;
         for (Destino item : Destino.values()) {

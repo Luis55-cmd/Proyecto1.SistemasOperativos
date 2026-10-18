@@ -1,6 +1,8 @@
 package com.avilaos.gui;
 
 import java.awt.*;
+import com.avilaos.simulation.SimulationController;
+import com.avilaos.hardware.Computer;
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import static com.avilaos.gui.PanelPrincipal.*;
@@ -11,6 +13,13 @@ public class EditorProceso extends JPanel {
     private final String[] operaciones = new String[100];
     private final int[] duraciones = new int[100];
     private int cantidad;
+    private final JComboBox<DestinoComputador> destino = new JComboBox<>();
+    private final JButton crearComputador = accion("Crea un computador primero →", true);
+
+    /** Copia visual: conserva ID entero y nombre, sin modificar el computador real. */
+    private record DestinoComputador(int id, String nombre) {
+        @Override public String toString() { return nombre + " · ID " + id; }
+    }
     private final JComboBox<String> operacion = new JComboBox<>(new String[]{"CPU", "E/S"});
     private final JSpinner ticks = new JSpinner(new SpinnerNumberModel(5, 1, 10000, 1));
     private final JLabel resumen = texto("0 bloques  ·  CPU: 0 ticks  ·  E/S: 0 ticks", 13, TINTA, true);
@@ -19,16 +28,18 @@ public class EditorProceso extends JPanel {
     private final JTable tabla = new JTable(modelo);
 
     /** Construye formulario y conecta listeners; no ejecuta operaciones al construirlo. */
-    public EditorProceso() {
+    public EditorProceso(Runnable irAComputadores) {
         super(new BorderLayout());
         JPanel pagina = pagina("PROCESOS", "Compón tu programa", "Define una secuencia de CPU y E/S, y el computador que la ejecutará.");
         JPanel identidad = tarjeta();
         JPanel campos = new JPanel(new GridLayout(1, 2, 24, 0));
         campos.setOpaque(false);
         campos.add(campo("Nombre del proceso", new JTextField()));
-        campos.add(campo("Computador destino · datos de ejemplo", new JComboBox<>(
-                new String[]{"Computador 1", "Computador 2"})));
+        campos.add(campo("Computador destino", destino));
         identidad.add(campos);
+        crearComputador.addActionListener(e -> irAComputadores.run());
+        identidad.add(Box.createVerticalStrut(10));
+        identidad.add(crearComputador);
         pagina.add(identidad);
         pagina.add(Box.createVerticalStrut(18));
 
@@ -80,6 +91,34 @@ public class EditorProceso extends JPanel {
         pagina.add(Box.createVerticalStrut(6));
         pagina.add(texto("La memoria calculada y los protocolos de sincronización se conectarán después.", 12, GRIS, false));
         add(pagina);
+    }
+
+    /**
+     * Entrada: controlador existente; salida: opciones reales del selector.
+     * Guarda ID seleccionado, vacía opciones y recorre computadores hasta size.
+     * Restaura el ID si aún existe; de otro modo queda el primero disponible.
+     * Sin computadores: selector deshabilitado y botón para ir a crearlos.
+     * Sólo cambia la vista; no altera nombre del proceso, bloques ni simulación.
+     * Conexión: mostrarPanel(PROCESO) → esta función. Ejecutar en EDT.
+     */
+    public void actualizarComputadores(SimulationController controller) {
+        Integer seleccionado = getComputadorDestinoId();
+        destino.removeAllItems();
+        for (int i = 0; i < controller.getComputers().size(); i++) {
+            Computer c = controller.getComputers().get(i);
+            DestinoComputador opcion = new DestinoComputador(c.getId(), c.getName());
+            destino.addItem(opcion);
+            if (seleccionado != null && seleccionado == c.getId()) destino.setSelectedItem(opcion);
+        }
+        boolean hayComputadores = destino.getItemCount() > 0;
+        destino.setEnabled(hayComputadores);
+        crearComputador.setVisible(!hayComputadores);
+    }
+
+    /** Devuelve ID de destino o null si no existe selección; sin efectos ni recorridos. */
+    public Integer getComputadorDestinoId() {
+        DestinoComputador seleccionado = (DestinoComputador) destino.getSelectedItem();
+        return seleccionado == null ? null : seleccionado.id();
     }
 
     /**

@@ -159,6 +159,11 @@ public class SimulationController implements IClockTickable {
         this.clock.setCycleDurationMs(ms);
     }
 
+    /** Consulta el intervalo configurado, sin modificar reloj ni computadores. */
+    public int getCycleDurationMs() {
+        return this.clock.getCycleDurationMs();
+    }
+
     public int getCurrentCycle() {
         return this.clock.getCycleCounter();
     }

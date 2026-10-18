@@ -19,6 +19,7 @@ public class SimulationControllerTest {
         testBufferCreation();
         testNetworkDelayAdvancement();
         testBufferBlockedProcessesWakeup();
+        testProducerSingleTerminationAndIdempotency();
         System.out.println(">>> TODAS LAS PRUEBAS DE SimulationControllerTest PASARON EXITOSAMENTE. <<<");
     }
 
@@ -305,6 +306,58 @@ public class SimulationControllerTest {
         if (bufMutex.getProduced() != 2) throw new AssertionError("Ambos procesos deben haber producido bajo exclusión mutua");
         if (pm1.getState() != ProcessState.SALIENTE || pm2.getState() != ProcessState.SALIENTE) {
             throw new AssertionError("Ambos procesos deben terminar tras liberar mutex");
+        }
+    }
+
+    private static void testProducerSingleTerminationAndIdempotency() {
+        SimulationController controller = SimulationController.getInstance();
+
+        // 1. Caso de reproducción exacto:
+        // FCFS RAM 128; buffer 5; productor de 10 ticks, RAM 20, requiredElements 1, targetBufferId 1;
+        // otro CPU_BOUND de 30 ticks y RAM 30; deadlines 100. Avanzar 5 ticks.
+        controller.reset();
+        controller.setNetworkLatency(0);
+
+        Computer comp = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Buffer buf = controller.createBuffer(comp.getId(), 5);
+
+        ProcessControlBlock prod = controller.createProcess(
+                "Prod", comp.getId(), ProcessType.PRODUCER, 10, 20, 1, 100,
+                String.valueOf(buf.getId()), 1, 1
+        );
+        ProcessControlBlock cpuBound = controller.createProcess(
+                "CpuBound", comp.getId(), ProcessType.CPU_BOUND, 30, 30, 1, 100
+        );
+
+        // RAM usada inicial = buffer (5) + prod (20) + cpuBound (30) = 55
+        if (comp.getMemoryManager().getUsedMemory() != 55) {
+            throw new AssertionError("RAM usada inicial debe ser 55, actual: " + comp.getMemoryManager().getUsedMemory());
+        }
+
+        // Avanzar 5 ticks: el productor completa sus 5 etapas (0, 1, 2, 3, 4) y termina
+        for (int i = 0; i < 5; i++) {
+            controller.stepSimulation();
+        }
+
+        if (prod.getState() != ProcessState.SALIENTE) {
+            throw new AssertionError("Productor debe estar en SALIENTE tras 5 ticks");
+        }
+        if (comp.getKernel().getEndedQueue().size() != 1) {
+            throw new AssertionError("endedQueue debe tener exactamente 1 entrada, actual: " + comp.getKernel().getEndedQueue().size());
+        }
+        if (comp.getMemoryManager().getUsedMemory() != 35) {
+            throw new AssertionError("RAM usada esperada es 35 (buffer 5 + cpuBound 30), actual: " + comp.getMemoryManager().getUsedMemory());
+        }
+
+        // 2. Probar idempotencia: repetir terminateProcess no altera RAM ni colas
+        comp.getKernel().terminateProcess(comp, prod);
+        comp.getKernel().terminateProcess(comp, prod);
+
+        if (comp.getKernel().getEndedQueue().size() != 1) {
+            throw new AssertionError("Repetir terminateProcess no debe duplicar en endedQueue");
+        }
+        if (comp.getMemoryManager().getUsedMemory() != 35) {
+            throw new AssertionError("Repetir terminateProcess no debe alterar la RAM usada");
         }
     }
 }

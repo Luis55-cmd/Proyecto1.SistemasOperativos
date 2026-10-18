@@ -223,20 +223,19 @@ public class ComputerKernel {
     }
 
     public void terminateProcess(Computer com, ProcessControlBlock p) {
-        if (p == null) {
+        if (p == null || p.isTerminated()) {
             return;
         }
 
-        if (p.getState() == ProcessState.BLOQUEADO) {
-            this.blockedQueue.removeElement(p);
-        } else if (p.getState() == ProcessState.LISTO) {
-            this.readyQueue.removeElement(p);
-        } else if (p.getState() == ProcessState.NUEVO) {
-            this.newQueue.removeElement(p);
-        }
-
+        p.setTerminated(true);
         p.setState(ProcessState.SALIENTE);
         p.setBlockReason(BlockReason.NONE);
+
+        this.blockedQueue.removeElement(p);
+        this.readyQueue.removeElement(p);
+        this.newQueue.removeElement(p);
+
+        this.endedQueue.removeElement(p); // Prevenir duplicados
         this.endedQueue.enqueue(p);
 
         // Desalojar CPU si el proceso terminado estaba corriendo en ella
@@ -246,11 +245,15 @@ public class ComputerKernel {
             com.getCpu().setPCB(null);
         }
 
-        // Liberar la memoria RAM asignada al proceso
-        if (com != null && com.getMemoryManager() != null) {
-            com.getMemoryManager().freeMemory(p.getAssignedMemory());
+        // Liberar la memoria RAM asignada al proceso (idempotente)
+        int memToFree = p.getAssignedMemory();
+        if (com != null && com.getMemoryManager() != null && memToFree > 0) {
+            com.getMemoryManager().freeMemory(memToFree);
+            p.setAssignedMemory(0); // Evitar doble liberación
             // Disparar admisión automática de la cola de NUEVOS
             evaluateNewQueueAdmission(com);
+        } else {
+            p.setAssignedMemory(0);
         }
 
         terminateFatherProcess(p.getId());
@@ -416,8 +419,6 @@ public class ComputerKernel {
                     if (!continueRunning) {
                         if (currentRunning.getState() == ProcessState.BLOQUEADO) {
                             blockProcess(comp, currentRunning);
-                        } else if (currentRunning.getState() == ProcessState.SALIENTE) {
-                            terminateProcess(comp, currentRunning);
                         }
                     }
                 } else {

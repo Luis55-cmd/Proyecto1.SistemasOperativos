@@ -51,6 +51,7 @@ public class ProcessControlBlock {
     private int syncStage = 0;               
     private int networkDelayRemaining = 0;   
     private boolean networkDelayDone = false;
+    private boolean terminated = false;
 
     /**
      * Constructor por defecto: asigna ID único generado automáticamente.
@@ -370,6 +371,14 @@ public class ProcessControlBlock {
 
     public void setCompletionCycle(int completionCycle) {
         this.completionCycle = completionCycle;
+    }
+
+    public boolean isTerminated() {
+        return terminated;
+    }
+
+    public void setTerminated(boolean terminated) {
+        this.terminated = terminated;
     }
 
     public int getProgramCounter() {

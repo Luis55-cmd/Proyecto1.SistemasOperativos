@@ -261,11 +261,12 @@ public class ComputerKernel {
      * Versión sin Computer: usada internamente por ProducerConsumerDriver.
      */
     public void blockProcess(ProcessControlBlock p) {
-        if (p == null) {
+        if (p == null || p.getState() == ProcessState.SALIENTE) {
             return;
         }
         p.setState(ProcessState.BLOQUEADO);
         this.readyQueue.removeElement(p);
+        this.blockedQueue.removeElement(p); // Prevenir duplicados
         this.blockedQueue.enqueue(p);
     }
 
@@ -287,15 +288,16 @@ public class ComputerKernel {
     }
 
     /**
-     * Desbloquea un proceso y lo retorna a la cola de listos.
+     * Desbloquea un proceso y lo retorna a la cola de listos sin duplicados.
      */
     public void blockedToReady(ProcessControlBlock p) {
-        if (p == null) {
+        if (p == null || p.getState() == ProcessState.SALIENTE) {
             return;
         }
         this.blockedQueue.removeElement(p);
         p.setState(ProcessState.LISTO);
         p.setBlockReason(BlockReason.NONE);
+        this.readyQueue.removeElement(p); // Prevenir duplicados
         this.readyQueue.enqueue(p);
     }
 
@@ -473,10 +475,12 @@ public class ComputerKernel {
 
     private void cleanupProcessResources(ProcessControlBlock pcb, MyLinkedList<Buffer> buffers) {
         if (pcb == null) return;
-        if (pcb.getSyncStage() == 2 || pcb.getSyncStage() == 3) {
-            Buffer buf = findBufferById(parseBufferId(pcb.getTargetBufferId()), buffers);
-            if (buf != null && buf.getMutex() != null) {
+        Buffer buf = findBufferById(parseBufferId(pcb.getTargetBufferId()), buffers);
+        if (buf != null) {
+            buf.removeWaitingProcess(pcb);
+            if ((pcb.getSyncStage() == 2 || pcb.getSyncStage() == 3) && buf.getMutex() != null) {
                 buf.getMutex().release();
+                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingMutex());
             }
         }
     }

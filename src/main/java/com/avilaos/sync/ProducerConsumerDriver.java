@@ -61,11 +61,13 @@ public class ProducerConsumerDriver {
             case 0 -> {
                 if (pcb.getType() == ProcessType.PRODUCER) {
                     if (!buffer.getVacios().tryAcquire()) {
+                        buffer.registerWaitingVacios(pcb);
                         blockProcess(pcb, BlockReason.WAITING_FULL_BUFFER);
                         return false;
                     }
                 } else {
                     if (!buffer.getLlenos().tryAcquire()) {
+                        buffer.registerWaitingLlenos(pcb);
                         blockProcess(pcb, BlockReason.WAITING_EMPTY_BUFFER);
                         return false;
                     }
@@ -75,6 +77,7 @@ public class ProducerConsumerDriver {
             }
             case 1 -> {
                 if (!buffer.getMutex().tryAcquire()) {
+                    buffer.registerWaitingMutex(pcb);
                     blockProcess(pcb, BlockReason.WAITING_MUTEX);
                     return false;
                 }
@@ -92,14 +95,17 @@ public class ProducerConsumerDriver {
             }
             case 3 -> {
                 buffer.getMutex().release();
+                wakeUpProcess(buffer.pollWaitingMutex());
                 pcb.setSyncStage(4);
                 return true;
             }
             case 4 -> {
                 if (pcb.getType() == ProcessType.PRODUCER) {
                     buffer.getLlenos().release();
+                    wakeUpProcess(buffer.pollWaitingLlenos());
                 } else {
                     buffer.getVacios().release();
+                    wakeUpProcess(buffer.pollWaitingVacios());
                 }
                 pcb.incrementProcessedElements();
                 pcb.decrementRemainingTime();
@@ -117,5 +123,24 @@ public class ProducerConsumerDriver {
         }
         pcb.setMode(ExecutionMode.USER);
         return true;
+    }
+
+    public static void wakeUpProcess(ProcessControlBlock pcb) {
+        if (pcb == null || pcb.getState() == ProcessState.SALIENTE) {
+            return;
+        }
+        try {
+            com.avilaos.simulation.SimulationController controller = com.avilaos.simulation.SimulationController.getInstance();
+            if (controller != null) {
+                com.avilaos.hardware.Computer comp = controller.getComputerById(pcb.getComputerId());
+                if (comp != null && comp.getKernel() != null) {
+                    comp.getKernel().blockedToReady(pcb);
+                    return;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        pcb.setState(ProcessState.LISTO);
+        pcb.setBlockReason(BlockReason.NONE);
     }
 }

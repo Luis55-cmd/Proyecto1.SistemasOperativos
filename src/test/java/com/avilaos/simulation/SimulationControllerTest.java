@@ -18,6 +18,7 @@ public class SimulationControllerTest {
         testSimulationTickExecution();
         testBufferCreation();
         testNetworkDelayAdvancement();
+        testBufferBlockedProcessesWakeup();
         System.out.println(">>> TODAS LAS PRUEBAS DE SimulationControllerTest PASARON EXITOSAMENTE. <<<");
     }
 
@@ -226,5 +227,84 @@ public class SimulationControllerTest {
         controller.stepSimulation(); // P1 llega a 0 y corre; P2 avanza a demora 1
         if (p1.getState() != ProcessState.EJECUTANDO) throw new AssertionError("P1 debe estar ejecutando");
         if (p2.getNetworkDelayRemaining() != 1) throw new AssertionError("P2 demora restante debe ser 1");
+    }
+
+    private static void testBufferBlockedProcessesWakeup() {
+        SimulationController controller = SimulationController.getInstance();
+
+        // 1. Caso de reproducción exacto:
+        // FCFS RAM 128, buffer 5; crear consumidor primero y productor despues.
+        // Ambos con 10 ticks, RAM 10, deadline 100, requiredElements 1 y targetBufferId 1. Avanzar 15 ticks.
+        controller.reset();
+        controller.setNetworkLatency(0);
+
+        Computer comp = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Buffer buf = controller.createBuffer(comp.getId(), 5);
+
+        ProcessControlBlock cons = controller.createProcess(
+                "Consumidor", comp.getId(), ProcessType.CONSUMER, 10, 10, 1, 100,
+                String.valueOf(buf.getId()), 1, 1
+        );
+        ProcessControlBlock prod = controller.createProcess(
+                "Productor", comp.getId(), ProcessType.PRODUCER, 10, 10, 1, 100,
+                String.valueOf(buf.getId()), 1, 1
+        );
+
+        // Avanzar 15 ticks
+        for (int i = 0; i < 15; i++) {
+            controller.stepSimulation();
+        }
+
+        if (buf.getProduced() != 1) throw new AssertionError("Debe haber producido 1 elemento");
+        if (buf.getComsumed() != 1) throw new AssertionError("Consumidor debe haber despertado y consumido 1 elemento");
+        if (cons.getState() != ProcessState.SALIENTE) throw new AssertionError("Consumidor debe terminar en SALIENTE");
+        if (prod.getState() != ProcessState.SALIENTE) throw new AssertionError("Productor debe terminar en SALIENTE");
+
+        // 2. Probar lleno (WAITING_FULL_BUFFER)
+        controller.reset();
+        controller.setNetworkLatency(0);
+        Computer compFull = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Buffer buf1 = controller.createBuffer(compFull.getId(), 1); // Capacidad 1
+
+        ProcessControlBlock p1 = controller.createProcess("P1", compFull.getId(), ProcessType.PRODUCER, 10, 10, 1, 100, String.valueOf(buf1.getId()), 1, 1);
+        ProcessControlBlock p2 = controller.createProcess("P2", compFull.getId(), ProcessType.PRODUCER, 10, 10, 1, 100, String.valueOf(buf1.getId()), 1, 1);
+
+        // P1 produce el primer elemento y llena el buffer
+        for (int i = 0; i < 6; i++) {
+            controller.stepSimulation();
+        }
+        if (buf1.getProduced() != 1) throw new AssertionError("P1 debe haber producido");
+
+        // P2 intenta producir y se bloquea por WAITING_FULL_BUFFER
+        controller.stepSimulation();
+        if (p2.getState() != ProcessState.BLOQUEADO || p2.getBlockReason() != BlockReason.WAITING_FULL_BUFFER) {
+            throw new AssertionError("P2 debe estar BLOQUEADO por buffer lleno");
+        }
+
+        // Crear consumidor para vaciar el buffer
+        ProcessControlBlock cFull = controller.createProcess("CFull", compFull.getId(), ProcessType.CONSUMER, 10, 10, 1, 100, String.valueOf(buf1.getId()), 1, 1);
+        for (int i = 0; i < 15; i++) {
+            controller.stepSimulation();
+        }
+        // P2 debió despertar y producir su elemento
+        if (buf1.getProduced() != 2) throw new AssertionError("P2 debió despertar y producir, total producidos = 2");
+        if (p2.getState() != ProcessState.SALIENTE) throw new AssertionError("P2 debe haber terminado");
+
+        // 3. Probar mutex (WAITING_MUTEX)
+        controller.reset();
+        controller.setNetworkLatency(0);
+        Computer compMutex = controller.createComputer(128, SchedulingPolicyType.ROUND_ROBIN);
+        Buffer bufMutex = controller.createBuffer(compMutex.getId(), 5);
+
+        ProcessControlBlock pm1 = controller.createProcess("PM1", compMutex.getId(), ProcessType.PRODUCER, 10, 10, 1, 100, String.valueOf(bufMutex.getId()), 1, 1);
+        ProcessControlBlock pm2 = controller.createProcess("PM2", compMutex.getId(), ProcessType.PRODUCER, 10, 10, 1, 100, String.valueOf(bufMutex.getId()), 1, 1);
+
+        for (int i = 0; i < 20; i++) {
+            controller.stepSimulation();
+        }
+        if (bufMutex.getProduced() != 2) throw new AssertionError("Ambos procesos deben haber producido bajo exclusión mutua");
+        if (pm1.getState() != ProcessState.SALIENTE || pm2.getState() != ProcessState.SALIENTE) {
+            throw new AssertionError("Ambos procesos deben terminar tras liberar mutex");
+        }
     }
 }

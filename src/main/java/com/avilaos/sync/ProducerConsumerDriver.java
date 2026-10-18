@@ -33,6 +33,10 @@ public class ProducerConsumerDriver {
         return networkSimulator;
     }
 
+    public boolean stepNetworkDelay(ProcessControlBlock pcb) {
+        return this.networkSimulator != null && this.networkSimulator.stepDelay(pcb);
+    }
+
     public void blockProcess(ProcessControlBlock pcb, BlockReason reason) {
         pcb.setState(ProcessState.BLOQUEADO);
         pcb.setBlockReason(reason);
@@ -44,9 +48,10 @@ public class ProducerConsumerDriver {
             return false;
         }
 
-        // Manejo de latencia de red en accesos remotos
+        // Manejo de latencia de red en accesos remotos (bloquea sin permitir operaciones de buffer)
         if (!networkSimulator.handleDelay(pcb, buffer)) {
-            return false; // Proceso bloqueado esperando latencia de red
+            pcb.setMode(ExecutionMode.USER);
+            return false;
         }
 
         // Operaciones de sincronización de semáforos se ejecutan en modo SYSTEM (llamada al sistema)

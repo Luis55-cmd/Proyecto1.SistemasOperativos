@@ -87,6 +87,15 @@ public class SimulationController implements IClockTickable {
      */
     public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
                                                           int instructions, int memory, int priority, int deadline) {
+        return createProcess(name, computerId, type, instructions, memory, priority, deadline, null, 1, 0);
+    }
+
+    /**
+     * Crea y admite un proceso Productor o Consumidor con parámetros de sincronización y buffer objetivo.
+     */
+    public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
+                                                          int instructions, int memory, int priority, int deadline,
+                                                          String targetBufferId, int cyclesPerOperation, int requiredElements) {
         Computer comp = getComputerById(computerId);
         if (comp == null) {
             return null;
@@ -94,7 +103,8 @@ public class SimulationController implements IClockTickable {
 
         ProcessControlBlock pcb = new ProcessControlBlock(
                 name, computerId, type != null ? type : ProcessType.CPU_BOUND,
-                instructions, memory, priority, deadline
+                instructions, memory, priority, deadline,
+                targetBufferId, cyclesPerOperation, requiredElements
         );
 
         comp.getKernel().gestionCreateProcess(comp, pcb);

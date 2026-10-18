@@ -393,14 +393,17 @@ public class ComputerKernel {
         // 2. Verificar y vencer deadlines (D-07, D-13)
         checkDeadlines(comp, currentCycle, buffers);
 
-        // 3. Despachar si la CPU está libre
+        // 3. Avanzar solicitudes pendientes de red para procesos bloqueados
+        advanceNetworkDelays(comp, syncDriver);
+
+        // 4. Despachar si la CPU está libre
         ProcessControlBlock currentRunning = cpu.getPCB();
         if (currentRunning == null || currentRunning.getState() != ProcessState.EJECUTANDO) {
             dispatch(comp, currentRunning);
             currentRunning = cpu.getPCB();
         }
 
-        // 4. Ejecutar 1 ciclo si hay un proceso en CPU
+        // 5. Ejecutar 1 ciclo si hay un proceso en CPU
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
             if (currentRunning.getType() == ProcessType.PRODUCER
                     || currentRunning.getType() == ProcessType.CONSUMER) {
@@ -447,6 +450,22 @@ public class ComputerKernel {
                 if (p.getRemainingDeadline() <= 0) {
                     cleanupProcessResources(p, buffers);
                     terminateProcess(comp, p);
+                }
+            }
+        }
+    }
+
+    private void advanceNetworkDelays(Computer comp, ProducerConsumerDriver syncDriver) {
+        if (syncDriver == null) return;
+        for (int i = 0; i < this.processList.size(); i++) {
+            ProcessControlBlock p = this.processList.get(i);
+            if (p != null
+                    && p.getState() == ProcessState.BLOQUEADO
+                    && p.getBlockReason() == BlockReason.NETWORK_LATENCY) {
+                boolean completed = syncDriver.stepNetworkDelay(p);
+                // Notificar y desbloquear al completarse, sin reactivar si fue cancelado por deadline
+                if (completed && p.getState() != ProcessState.SALIENTE) {
+                    blockedToReady(p);
                 }
             }
         }

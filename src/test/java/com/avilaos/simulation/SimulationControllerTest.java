@@ -1,5 +1,6 @@
 package com.avilaos.simulation;
 
+import com.avilaos.core.model.BlockReason;
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.model.ProcessType;
@@ -16,6 +17,7 @@ public class SimulationControllerTest {
         testClusterCreationAndProcess();
         testSimulationTickExecution();
         testBufferCreation();
+        testNetworkDelayAdvancement();
         System.out.println(">>> TODAS LAS PRUEBAS DE SimulationControllerTest PASARON EXITOSAMENTE. <<<");
     }
 
@@ -106,5 +108,123 @@ public class SimulationControllerTest {
         if (b3 != null) throw new AssertionError("Tercer buffer debe fallar por falta de RAM");
         if (compMulti.getMemoryManager().getUsedMemory() != 64) throw new AssertionError("RAM usada debe mantenerse en 64");
         if (controller.getBuffers().size() != 2) throw new AssertionError("Deben mantenerse 2 buffers registrados");
+    }
+
+    private static void testNetworkDelayAdvancement() {
+        SimulationController controller = SimulationController.getInstance();
+
+        // 1. Caso de reproducción exacto: 2 computadores FCFS, buffer en comp1, productor en comp2, latencia 2
+        controller.reset();
+        controller.setNetworkLatency(2);
+
+        Computer c1 = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Computer c2 = controller.createComputer(128, SchedulingPolicyType.FCFS);
+
+        Buffer buf = controller.createBuffer(c1.getId(), 5);
+        ProcessControlBlock prod = controller.createProcess(
+                "Prod", c2.getId(), ProcessType.PRODUCER, 10, 10, 1, 100,
+                String.valueOf(buf.getId()), 1, 1
+        );
+
+        // Tick 1: Despacha en c2, detecta acceso remoto y se bloquea con demora restante 2
+        controller.stepSimulation();
+        if (prod.getState() != ProcessState.BLOQUEADO) throw new AssertionError("Debe estar BLOQUEADO en ciclo 1");
+        if (prod.getBlockReason() != BlockReason.NETWORK_LATENCY) throw new AssertionError("Razón debe ser NETWORK_LATENCY");
+        if (prod.getNetworkDelayRemaining() != 2) throw new AssertionError("Demora restante debe ser 2");
+        if (c2.getCpu().getPCB() != null) throw new AssertionError("CPU de c2 no debe estar ocupada por proceso bloqueado");
+
+        // Tick 2: Demora avanza sin ocupar CPU (restante pasa de 2 a 1)
+        controller.stepSimulation();
+        if (prod.getState() != ProcessState.BLOQUEADO) throw new AssertionError("Debe seguir BLOQUEADO en ciclo 2");
+        if (prod.getNetworkDelayRemaining() != 1) throw new AssertionError("Demora restante debe ser 1 en ciclo 2");
+        if (c2.getCpu().getPCB() != null) throw new AssertionError("CPU de c2 no debe estar ocupada en ciclo 2");
+
+        // Tick 3: Demora llega a 0, vuelve a LISTO y se despacha a CPU en el mismo ciclo
+        controller.stepSimulation();
+        if (prod.getNetworkDelayRemaining() != 0) throw new AssertionError("Demora restante debe ser 0 en ciclo 3");
+        if (c2.getCpu().getPCB() != prod) throw new AssertionError("Debe despacharse a CPU tras completar latencia");
+        if (prod.getState() != ProcessState.EJECUTANDO) throw new AssertionError("Debe estar EJECUTANDO en ciclo 3");
+
+        // Avanzar hasta completar los 10 ticks: debe terminar exitosamente sin congelarse
+        for (int i = 4; i <= 10; i++) {
+            controller.stepSimulation();
+        }
+        if (prod.getState() != ProcessState.SALIENTE) throw new AssertionError("Productor debe terminar exitosamente tras 10 ticks");
+        if (prod.getProcessedElements() != 1) throw new AssertionError("Debe haber producido 1 elemento");
+
+        // 2. Latencia 0: No debe bloquearse por demora de red
+        controller.reset();
+        controller.setNetworkLatency(0);
+        Computer c1_0 = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Computer c2_0 = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Buffer buf0 = controller.createBuffer(c1_0.getId(), 5);
+        ProcessControlBlock prod0 = controller.createProcess(
+                "Prod0", c2_0.getId(), ProcessType.PRODUCER, 10, 10, 1, 100,
+                String.valueOf(buf0.getId()), 1, 1
+        );
+        controller.stepSimulation();
+        if (prod0.getState() == ProcessState.BLOQUEADO && prod0.getBlockReason() == BlockReason.NETWORK_LATENCY) {
+            throw new AssertionError("Con latencia 0 no debe bloquearse por NETWORK_LATENCY");
+        }
+
+        // 3. Latencia 1: Se bloquea 1 ciclo y al siguiente vuelve a LISTO/CPU
+        controller.reset();
+        controller.setNetworkLatency(1);
+        Computer c1_1 = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Computer c2_1 = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Buffer buf1 = controller.createBuffer(c1_1.getId(), 5);
+        ProcessControlBlock prod1 = controller.createProcess(
+                "Prod1", c2_1.getId(), ProcessType.PRODUCER, 10, 10, 1, 100,
+                String.valueOf(buf1.getId()), 1, 1
+        );
+        controller.stepSimulation();
+        if (prod1.getState() != ProcessState.BLOQUEADO || prod1.getNetworkDelayRemaining() != 1) {
+            throw new AssertionError("Con latencia 1 debe bloquearse con demora 1");
+        }
+        controller.stepSimulation();
+        if (prod1.getState() != ProcessState.EJECUTANDO || prod1.getNetworkDelayRemaining() != 0) {
+            throw new AssertionError("Al ciclo 2 con latencia 1 debe estar EJECUTANDO");
+        }
+
+        // 4. Cancelación por deadline sin reactivar terminados
+        controller.reset();
+        controller.setNetworkLatency(5);
+        Computer c1_d = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Computer c2_d = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Buffer bufd = controller.createBuffer(c1_d.getId(), 5);
+        ProcessControlBlock prodD = controller.createProcess(
+                "ProdDeadline", c2_d.getId(), ProcessType.PRODUCER, 10, 10, 1, 2,
+                String.valueOf(bufd.getId()), 1, 1
+        );
+        controller.stepSimulation(); // Ciclo 1: Bloqueado por red, deadline 2 -> 1
+        if (prodD.getState() != ProcessState.BLOQUEADO) throw new AssertionError("Debe estar bloqueado");
+        controller.stepSimulation(); // Ciclo 2: Deadline vence -> SALIENTE
+        if (prodD.getState() != ProcessState.SALIENTE) throw new AssertionError("Debe vencer por deadline");
+
+        // Avanzar más ticks donde la latencia de red llegaría a 0: NO debe reactivarse
+        for (int i = 0; i < 6; i++) {
+            controller.stepSimulation();
+        }
+        if (prodD.getState() != ProcessState.SALIENTE) throw new AssertionError("Proceso terminado no debe reactivarse");
+        if (c2_d.getKernel().getReadyQueue().removeElement(prodD)) {
+            throw new AssertionError("Proceso terminado por deadline no debe volver a readyQueue");
+        }
+
+        // 5. Múltiples solicitudes
+        controller.reset();
+        controller.setNetworkLatency(2);
+        Computer c1_m = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Computer c2_m = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        Buffer bufm = controller.createBuffer(c1_m.getId(), 5);
+        ProcessControlBlock p1 = controller.createProcess("P1", c2_m.getId(), ProcessType.PRODUCER, 10, 10, 1, 100, String.valueOf(bufm.getId()), 1, 1);
+        ProcessControlBlock p2 = controller.createProcess("P2", c2_m.getId(), ProcessType.PRODUCER, 10, 10, 1, 100, String.valueOf(bufm.getId()), 1, 1);
+
+        controller.stepSimulation(); // P1 se bloquea por red (demora 2)
+        controller.stepSimulation(); // P1 avanza a demora 1; P2 corre y se bloquea (demora 2)
+        if (p1.getNetworkDelayRemaining() != 1) throw new AssertionError("P1 demora restante debe ser 1");
+        if (p2.getNetworkDelayRemaining() != 2) throw new AssertionError("P2 demora restante debe ser 2");
+        controller.stepSimulation(); // P1 llega a 0 y corre; P2 avanza a demora 1
+        if (p1.getState() != ProcessState.EJECUTANDO) throw new AssertionError("P1 debe estar ejecutando");
+        if (p2.getNetworkDelayRemaining() != 1) throw new AssertionError("P2 demora restante debe ser 1");
     }
 }

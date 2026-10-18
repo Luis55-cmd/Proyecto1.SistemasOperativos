@@ -62,11 +62,49 @@ public class SimulationControllerTest {
         SimulationController controller = SimulationController.getInstance();
         controller.reset();
 
+        // Caso 1: Creación normal
         Computer comp = controller.createComputer(1024, SchedulingPolicyType.FCFS);
         Buffer buf = controller.createBuffer(comp.getId(), 10);
 
         if (buf == null) throw new AssertionError("El buffer debe crearse");
         if (controller.getBuffers().size() != 1) throw new AssertionError("Debe haber 1 buffer registrado");
         if (buf.getIdComp() != comp.getId()) throw new AssertionError("El buffer anfitrion debe coincidir");
+
+        // Caso 2: Reproducción - RAM insuficiente (RAM 32, buffer 64)
+        controller.reset();
+        Computer compSmall = controller.createComputer(32, SchedulingPolicyType.FCFS);
+        Buffer bufOver = controller.createBuffer(compSmall.getId(), 64);
+        if (bufOver != null) throw new AssertionError("Buffer con capacidad mayor a RAM debe fallar retornando null");
+        if (controller.getBuffers().size() != 0) throw new AssertionError("No se debe registrar el buffer fallido");
+        if (compSmall.getMemoryManager().getUsedMemory() != 0) throw new AssertionError("La RAM usada debe ser 0 tras fallo");
+        if (compSmall.getRam().getUsedSize() != 0) throw new AssertionError("El usedSize de RAM debe ser 0 tras fallo");
+
+        // Caso 3: Validaciones de entrada (capacidad <= 0 y host inexistente)
+        if (controller.createBuffer(compSmall.getId(), 0) != null) throw new AssertionError("Capacidad 0 debe retornar null");
+        if (controller.createBuffer(compSmall.getId(), -5) != null) throw new AssertionError("Capacidad negativa debe retornar null");
+        if (controller.createBuffer(999, 10) != null) throw new AssertionError("Host inexistente debe retornar null");
+
+        // Caso 4: Ajuste exacto (RAM 32, buffer 32)
+        controller.reset();
+        Computer compExact = controller.createComputer(32, SchedulingPolicyType.FCFS);
+        Buffer bufExact = controller.createBuffer(compExact.getId(), 32);
+        if (bufExact == null) throw new AssertionError("Ajuste exacto de buffer debe ser exitoso");
+        if (compExact.getMemoryManager().getUsedMemory() != 32) throw new AssertionError("La RAM usada debe ser 32");
+        if (controller.getBuffers().size() != 1) throw new AssertionError("Debe haber 1 buffer registrado");
+
+        // Caso 5: Múltiples buffers respetan capacidad y contigüidad
+        controller.reset();
+        Computer compMulti = controller.createComputer(64, SchedulingPolicyType.FCFS);
+        Buffer b1 = controller.createBuffer(compMulti.getId(), 32);
+        Buffer b2 = controller.createBuffer(compMulti.getId(), 32);
+        if (b1 == null || b2 == null) throw new AssertionError("Dos buffers de 32 deben caber en RAM 64");
+        if (compMulti.getMemoryManager().getUsedMemory() != 64) throw new AssertionError("RAM usada debe ser 64");
+        if (controller.getBuffers().size() != 2) throw new AssertionError("Deben haber 2 buffers registrados");
+
+        // Tercer buffer no debe caber y no debe alterar estado
+        Buffer b3 = controller.createBuffer(compMulti.getId(), 1);
+        if (b3 != null) throw new AssertionError("Tercer buffer debe fallar por falta de RAM");
+        if (compMulti.getMemoryManager().getUsedMemory() != 64) throw new AssertionError("RAM usada debe mantenerse en 64");
+        if (controller.getBuffers().size() != 2) throw new AssertionError("Deben mantenerse 2 buffers registrados");
     }
 }

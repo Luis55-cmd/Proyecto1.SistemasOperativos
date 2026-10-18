@@ -105,14 +105,22 @@ public class SimulationController implements IClockTickable {
      * Crea y aloja un Búfer acotado en la memoria RAM del computador anfitrión.
      */
     public synchronized Buffer createBuffer(int hostComputerId, int storage) {
+        if (storage <= 0) {
+            return null;
+        }
         Computer host = getComputerById(hostComputerId);
-        if (host == null) {
+        if (host == null || host.getKernel() == null) {
             return null;
         }
 
-        int id = nextBufferId++;
+        int id = nextBufferId;
         Buffer buffer = new Buffer(null, null, null, hostComputerId, storage, id, new MyQueue<>(), storage);
-        host.getKernel().placeBufferRAM(buffer, host);
+        boolean success = host.getKernel().placeBufferRAM(buffer, host);
+        if (!success) {
+            return null;
+        }
+
+        nextBufferId++;
         this.buffers.append(buffer);
         return buffer;
     }

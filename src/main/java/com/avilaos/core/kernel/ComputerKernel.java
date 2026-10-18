@@ -299,27 +299,30 @@ public class ComputerKernel {
         this.readyQueue.enqueue(p);
     }
 
-    public String placeBufferRAM(Buffer buffer, Computer com) {
+    public boolean placeBufferRAM(Buffer buffer, Computer com) {
         if (buffer == null || com == null) {
-            return "Error: Parámetros inválidos.";
+            return false;
         }
         int cantidad = buffer.getStorage();
-        if (com.getRam().getSpace() == null) {
-            return "Error: El espacio de la RAM no está inicializado.";
+        if (cantidad <= 0) {
+            return false;
+        }
+        if (com.getRam() == null || com.getRam().getSpace() == null) {
+            return false;
         }
 
-        if (com.getMemoryManager() != null) {
-            if (!com.getMemoryManager().hasAvailableMemory(cantidad)) {
-                return "Falta de memoria para alojar el búfer en RAM.";
-            }
-            com.getMemoryManager().allocateMemory(cantidad);
+        // 1. Validar disponibilidad contable previa
+        if (com.getMemoryManager() != null && !com.getMemoryManager().hasAvailableMemory(cantidad)) {
+            return false;
         }
 
-        int ramTotalSize = com.getRam().getSpace().length;
+        // 2. Validar disponibilidad física de bloques contiguos en RAM
+        int[] space = com.getRam().getSpace();
+        int ramTotalSize = space.length;
         int consecutiveFreeBlocks = 0;
         int startIndex = -1;
         for (int i = 0; i < ramTotalSize; i++) {
-            if (com.getRam().getSpace()[i] == 0) {
+            if (space[i] == 0) {
                 if (consecutiveFreeBlocks == 0) {
                     startIndex = i;
                 }
@@ -332,13 +335,39 @@ public class ComputerKernel {
                 startIndex = -1;
             }
         }
-        if (consecutiveFreeBlocks >= cantidad) {
-            for (int i = startIndex; i < startIndex + cantidad; i++) {
-                com.getRam().getSpace()[i] = buffer.getId() + 1000;
-            }
-            return "Búfer ID " + buffer.getId() + " ubicado exitosamente en la RAM";
+
+        if (consecutiveFreeBlocks < cantidad || startIndex < 0) {
+            return false;
         }
-        return "Búfer asignado contablemente en RAM.";
+
+        // 3. Realizar reserva contable (solo tras verificar espacio contiguo)
+        if (com.getMemoryManager() != null) {
+            if (!com.getMemoryManager().allocateMemory(cantidad)) {
+                return false;
+            }
+        } else {
+            com.getRam().setUsedSize(com.getRam().getUsedSize() + cantidad);
+        }
+
+        // 4. Ubicar físicamente el búfer en RAM con reversión en caso de fallo
+        try {
+            for (int i = startIndex; i < startIndex + cantidad; i++) {
+                space[i] = buffer.getId() + 1000;
+            }
+            return true;
+        } catch (Exception e) {
+            for (int i = startIndex; i < startIndex + cantidad; i++) {
+                if (space[i] == buffer.getId() + 1000) {
+                    space[i] = 0;
+                }
+            }
+            if (com.getMemoryManager() != null) {
+                com.getMemoryManager().freeMemory(cantidad);
+            } else {
+                com.getRam().setUsedSize(Math.max(0, com.getRam().getUsedSize() - cantidad));
+            }
+            return false;
+        }
     }
 
     // =========================================================================

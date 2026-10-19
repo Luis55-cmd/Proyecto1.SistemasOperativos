@@ -148,14 +148,17 @@ public class ComputerKernel {
     }
 
     /**
-     * Despacha el siguiente proceso de la cola de listos a la CPU usando la política activa.
+     * Despacha el siguiente proceso de la cola de listos o evalúa el desalojo del proceso en CPU.
      */
     public void dispatch(Computer com, ProcessControlBlock p) {
         if (com == null) {
             return;
         }
 
-        if (this.readyQueue.isEmpty()) {
+        ProcessControlBlock currentRunning = (p != null && p.getState() == ProcessState.EJECUTANDO) ? p : null;
+
+        // Si la cola de listos está vacía y la CPU está libre, no hay nada que despachar
+        if (this.readyQueue.isEmpty() && currentRunning == null) {
             if (com.getCpu() != null) {
                 com.getCpu().setPCB(null);
             }
@@ -163,16 +166,27 @@ public class ComputerKernel {
         }
 
         IScheduler scheduler = getOrUpdateScheduler(com);
-        ProcessControlBlock currentRunning = (p != null && p.getState() == ProcessState.EJECUTANDO) ? p : null;
         ProcessControlBlock next = scheduler.scheduleNext(this.readyQueue, currentRunning);
 
         if (next != null) {
+            // Guardar contexto del proceso desalojado si fue reemplazado por otro proceso
+            if (currentRunning != null && currentRunning != next) {
+                if (com.getCpu() != null) {
+                    currentRunning.setProgramCounter(com.getCpu().getPC());
+                    currentRunning.setMemoryAddressRegister(com.getCpu().getMAR());
+                }
+            }
+
             next.setState(ProcessState.EJECUTANDO);
             if (com.getCpu() != null) {
                 com.getCpu().setPCB(next);
                 com.getCpu().setPC(next.getProgramCounter());
                 com.getCpu().setMAR(next.getMemoryAddressRegister());
                 com.getCpu().setMode(next.getMode() != null ? next.getMode() : ExecutionMode.USER);
+            }
+        } else {
+            if (com.getCpu() != null) {
+                com.getCpu().setPCB(null);
             }
         }
     }
@@ -292,6 +306,7 @@ public class ComputerKernel {
 
     /**
      * Desbloquea un proceso y lo retorna a la cola de listos sin duplicados.
+     * Acepta procesos en estado BLOQUEADO o LISTO (cuando wakeUpProcess ya actualizó el estado).
      */
     public void blockedToReady(ProcessControlBlock p) {
         if (p == null || p.getState() == ProcessState.SALIENTE) {
@@ -391,8 +406,9 @@ public class ComputerKernel {
         if (cpu == null) return;
 
         // 1. Notificar al planificador (quantum Round Robin, etc.)
-        if (this.activeScheduler != null) {
-            this.activeScheduler.onClockTick();
+        IScheduler scheduler = getOrUpdateScheduler(comp);
+        if (scheduler != null) {
+            scheduler.onClockTick();
         }
 
         // 2. Verificar y vencer deadlines (D-07, D-13)
@@ -401,12 +417,14 @@ public class ComputerKernel {
         // 3. Avanzar solicitudes pendientes de red para procesos bloqueados
         advanceNetworkDelays(comp, syncDriver);
 
-        // 4. Despachar si la CPU está libre
+        // 3.5 Mover a readyQueue los procesos que wakeUpProcess marcó como LISTO
+        //     pero que aún pueden estar físicamente en blockedQueue.
+        flushWokenProcesses();
+
+        // 4. Despachar o evaluar desalojo en CPU (Round Robin quantum, prioridad, etc.)
         ProcessControlBlock currentRunning = cpu.getPCB();
-        if (currentRunning == null || currentRunning.getState() != ProcessState.EJECUTANDO) {
-            dispatch(comp, currentRunning);
-            currentRunning = cpu.getPCB();
-        }
+        dispatch(comp, currentRunning);
+        currentRunning = cpu.getPCB();
 
         // 5. Ejecutar 1 ciclo si hay un proceso en CPU
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
@@ -474,16 +492,62 @@ public class ComputerKernel {
         }
     }
 
+    /**
+     * Mueve a la cola de listos todos los procesos que wakeUpProcess ya marcó como LISTO
+     * pero que físicamente aún pueden estar en blockedQueue.
+     * Mantiene la separación de capas: sync solo modifica el estado del PCB,
+     * el kernel es el único responsable de gestionar las colas.
+     */
+    private void flushWokenProcesses() {
+        int size = this.blockedQueue.size();
+        for (int i = 0; i < size; i++) {
+            ProcessControlBlock p = this.blockedQueue.dequeue();
+            if (p == null) continue;
+            if (p.getState() == ProcessState.LISTO) {
+                // El proceso fue despertado por wakeUpProcess: moverlo a readyQueue
+                this.readyQueue.removeElement(p); // Prevenir duplicados
+                this.readyQueue.enqueue(p);
+            } else {
+                // El proceso sigue bloqueado: volver a encolarlo
+                this.blockedQueue.enqueue(p);
+            }
+        }
+    }
+
     private void cleanupProcessResources(ProcessControlBlock pcb, MyLinkedList<Buffer> buffers) {
         if (pcb == null) return;
         Buffer buf = findBufferById(parseBufferId(pcb.getTargetBufferId()), buffers);
-        if (buf != null) {
-            buf.removeWaitingProcess(pcb);
-            if ((pcb.getSyncStage() == 2 || pcb.getSyncStage() == 3) && buf.getMutex() != null) {
-                buf.getMutex().release();
-                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingMutex());
+        if (buf == null) return;
+
+        // Retirar al proceso de todas las colas de espera del búfer
+        buf.removeWaitingProcess(pcb);
+
+        int stage = pcb.getSyncStage();
+
+        // Etapa 2 o 3: el proceso retiene el mutex → liberarlo y despertar al siguiente
+        if ((stage == 2 || stage == 3) && buf.getMutex() != null) {
+            buf.getMutex().release();
+            ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingMutex());
+        }
+
+        // Etapas 1, 2 o 3: el proceso retiene un permiso de vacios/llenos adquirido en etapa 0
+        // Devolverlo para evitar fuga permanente de capacidad del búfer.
+        if (stage >= 1 && stage <= 3) {
+            if (pcb.getType() == com.avilaos.core.model.ProcessType.PRODUCER) {
+                // El productor tomó un permiso de vacios (espacio libre); devolverlo
+                buf.getVacios().release();
+                // Despertar un productor que pudiera estar bloqueado por búfer lleno
+                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingVacios());
+            } else if (pcb.getType() == com.avilaos.core.model.ProcessType.CONSUMER) {
+                // El consumidor tomó un permiso de llenos (dato disponible); devolverlo
+                buf.getLlenos().release();
+                // Despertar un consumidor que pudiera estar bloqueado por búfer vacío
+                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingLlenos());
             }
         }
+
+        // Resetear la etapa de sincronización para no reusar estado corrupto
+        pcb.setSyncStage(0);
     }
 
     private Buffer findBufferById(int id, MyLinkedList<Buffer> buffers) {

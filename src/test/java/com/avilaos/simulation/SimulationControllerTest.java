@@ -20,6 +20,8 @@ public class SimulationControllerTest {
         testNetworkDelayAdvancement();
         testBufferBlockedProcessesWakeup();
         testProducerSingleTerminationAndIdempotency();
+        testRoundRobinPreemptionAndDispatch();
+        testDeadlinePermitLeakFix();
         System.out.println(">>> TODAS LAS PRUEBAS DE SimulationControllerTest PASARON EXITOSAMENTE. <<<");
     }
 
@@ -359,5 +361,125 @@ public class SimulationControllerTest {
         if (comp.getMemoryManager().getUsedMemory() != 35) {
             throw new AssertionError("Repetir terminateProcess no debe alterar la RAM usada");
         }
+    }
+
+    private static void testRoundRobinPreemptionAndDispatch() {
+        SimulationController controller = SimulationController.getInstance();
+
+        // 1. Caso de reproducción exacto:
+        // Computador RAM 128, ROUND_ROBIN; dos procesos CPU_BOUND de 20 ticks, RAM 10, prioridad 1 y deadline 100. Avanzar 8 ticks.
+        controller.reset();
+        Computer compRR = controller.createComputer(128, SchedulingPolicyType.ROUND_ROBIN);
+        ProcessControlBlock pA = controller.createProcess("A", compRR.getId(), ProcessType.CPU_BOUND, 20, 10, 1, 100);
+        ProcessControlBlock pB = controller.createProcess("B", compRR.getId(), ProcessType.CPU_BOUND, 20, 10, 1, 100);
+
+        for (int i = 0; i < 8; i++) {
+            controller.stepSimulation();
+        }
+
+        // Con quantum 3:
+        // Ticks 1-3: A corre (3 ticks) -> restantes 17
+        // Ticks 4-6: B corre (3 ticks) -> restantes 17
+        // Ticks 7-8: A corre (2 ticks) -> restantes 15
+        if (pA.getRemainingTime() != 15) {
+            throw new AssertionError("A debe tener 15 ticks restantes con quantum 3, actual: " + pA.getRemainingTime());
+        }
+        if (pB.getRemainingTime() != 17) {
+            throw new AssertionError("B debe tener 17 ticks restantes con quantum 3, actual: " + pB.getRemainingTime());
+        }
+
+        // 2. Un proceso solo continúa en Round Robin sin que se borre la CPU al agotarse el quantum
+        controller.reset();
+        Computer compSingle = controller.createComputer(128, SchedulingPolicyType.ROUND_ROBIN);
+        ProcessControlBlock pSingle = controller.createProcess("Single", compSingle.getId(), ProcessType.CPU_BOUND, 20, 10, 1, 100);
+
+        for (int i = 0; i < 8; i++) {
+            controller.stepSimulation();
+        }
+        if (pSingle.getRemainingTime() != 12) {
+            throw new AssertionError("Un proceso solo en RR debe continuar ininterrumpidamente, restantes: " + pSingle.getRemainingTime());
+        }
+        if (compSingle.getCpu().getPCB() != pSingle) {
+            throw new AssertionError("La CPU no debe ser vaciada si hay un proceso corriendo");
+        }
+
+        // 3. FCFS no es desalojado
+        controller.reset();
+        Computer compFcfs = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        ProcessControlBlock pF1 = controller.createProcess("F1", compFcfs.getId(), ProcessType.CPU_BOUND, 20, 10, 1, 100);
+        ProcessControlBlock pF2 = controller.createProcess("F2", compFcfs.getId(), ProcessType.CPU_BOUND, 20, 10, 1, 100);
+
+        for (int i = 0; i < 8; i++) {
+            controller.stepSimulation();
+        }
+        if (pF1.getRemainingTime() != 12) {
+            throw new AssertionError("F1 debe correr los 8 ticks en FCFS, restantes: " + pF1.getRemainingTime());
+        }
+        if (pF2.getRemainingTime() != 20) {
+            throw new AssertionError("F2 no debe ser ejecutado en FCFS mientras F1 no termine, restantes: " + pF2.getRemainingTime());
+        }
+    }
+
+    /**
+     * Escenario: Fuga de permisos de vacios/llenos cuando un proceso muere por deadline
+     * mientras retiene un permiso adquirido en la etapa 0 (syncStage >= 1).
+     *
+     * Verifica:
+     *   1. Tras cancelar un Productor en etapa 1 por deadline, vacios recupera su permiso.
+     *   2. Un nuevo Productor con deadline holgado puede producir exitosamente.
+     */
+    private static void testDeadlinePermitLeakFix() {
+        SimulationController controller = SimulationController.getInstance();
+        controller.reset();
+
+        Computer comp = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        controller.setNetworkLatency(0);
+        Buffer buf = controller.createBuffer(comp.getId(), 1); // búfer de capacidad 1
+        if (buf == null) throw new AssertionError("El búfer debe crearse en RAM suficiente");
+
+        int vaciosBefore = buf.getVacios().availablePermits();
+        if (vaciosBefore != 1) throw new AssertionError("vacios debe iniciar en 1, got: " + vaciosBefore);
+
+        // Productor A con deadline muy corto (2 ticks): muere antes de terminar la producción
+        String bufId = String.valueOf(buf.getId());
+        ProcessControlBlock prodA = controller.createProcess(
+                "ProdA", comp.getId(), ProcessType.PRODUCER, 10, 10, 1, 2, bufId, 1, 1);
+        if (prodA == null) throw new AssertionError("ProdA debe crearse");
+
+        // Tick 1: ProdA ejecuta etapa 0 (adquiere vacios → pasa a etapa 1)
+        controller.stepSimulation();
+        // Tick 2: deadline vence → cleanupProcessResources cancela y devuelve vacios
+        controller.stepSimulation();
+
+        // El permiso de vacios debe haberse recuperado
+        int vaciosAfter = buf.getVacios().availablePermits();
+        if (vaciosAfter != 1) {
+            throw new AssertionError(
+                "Tras cancelar ProdA en etapa 1 por deadline, vacios debe recuperarse a 1, got: " + vaciosAfter);
+        }
+        if (prodA.getState() != ProcessState.SALIENTE) {
+            throw new AssertionError("ProdA debe estar SALIENTE tras vencer el deadline");
+        }
+
+        // Segundo escenario: nuevo productor con deadline holgado debe producir sin bloqueo
+        controller.reset();
+        comp = controller.createComputer(128, SchedulingPolicyType.FCFS);
+        controller.setNetworkLatency(0);
+        buf = controller.createBuffer(comp.getId(), 1);
+        bufId = String.valueOf(buf.getId());
+
+        ProcessControlBlock prodB = controller.createProcess(
+                "ProdB", comp.getId(), ProcessType.PRODUCER, 10, 10, 1, 50, bufId, 1, 1);
+        if (prodB == null) throw new AssertionError("ProdB debe crearse");
+
+        for (int i = 0; i < 5; i++) {
+            controller.stepSimulation();
+        }
+
+        if (buf.getProduced() < 1) {
+            throw new AssertionError("ProdB debe haber producido al menos 1 elemento, produced=" + buf.getProduced());
+        }
+
+        System.out.println("[PASS] testDeadlinePermitLeakFix");
     }
 }

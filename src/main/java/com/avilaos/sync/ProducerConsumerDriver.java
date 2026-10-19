@@ -129,17 +129,10 @@ public class ProducerConsumerDriver {
         if (pcb == null || pcb.getState() == ProcessState.SALIENTE) {
             return;
         }
-        try {
-            com.avilaos.simulation.SimulationController controller = com.avilaos.simulation.SimulationController.getInstance();
-            if (controller != null) {
-                com.avilaos.hardware.Computer comp = controller.getComputerById(pcb.getComputerId());
-                if (comp != null && comp.getKernel() != null) {
-                    comp.getKernel().blockedToReady(pcb);
-                    return;
-                }
-            }
-        } catch (Exception ignored) {
-        }
+        // Marca el proceso como LISTO y limpia la razón de bloqueo.
+        // El kernel (ComputerKernel.blockedToReady) gestiona las colas en el siguiente ciclo.
+        // No se llama aquí a SimulationController para respetar la separación de capas:
+        // sync → kernel (permitido), sync → simulation (no permitido).
         pcb.setState(ProcessState.LISTO);
         pcb.setBlockReason(BlockReason.NONE);
     }

@@ -1,5 +1,7 @@
 package com.avilaos;
 import com.avilaos.core.structures.*;
+import com.avilaos.hardware.Computer;
+import com.avilaos.ui.Vista1;
 
 
 /**

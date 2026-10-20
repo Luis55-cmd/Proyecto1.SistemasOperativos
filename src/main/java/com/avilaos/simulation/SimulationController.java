@@ -83,6 +83,28 @@ public class SimulationController implements IClockTickable {
     }
 
     /**
+     * Entradas: nombre, RAM positiva y política. Salida: computador registrado.
+     * Valida antes de crear; error IllegalArgumentException sin agregar computadores.
+     * Recorre computadores hasta encontrar duplicado o agotar la lista.
+     * Compara sin mayúsculas ni espacios externos; no consume ID ante duplicado.
+     * Delega construcción al método existente y asigna nombre. No inicia reloj.
+     */
+    public synchronized Computer createComputer(String name, int ramSize, SchedulingPolicyType policy) {
+        if (name == null || name.trim().isEmpty() || ramSize <= 0 || policy == null) {
+            throw new IllegalArgumentException("Indica nombre, RAM positiva y política.");
+        }
+        String normalizedName = name.trim();
+        for (int i = 0; i < computers.size(); i++) {
+            if (computers.get(i).getName().equalsIgnoreCase(normalizedName)) {
+                throw new IllegalArgumentException("Asegúrate de usar un nombre único");
+            }
+        }
+        Computer computer = createComputer(ramSize, policy);
+        computer.setName(name);
+        return computer;
+    }
+
+    /**
      * Crea y admite un proceso en el computador especificado.
      */
     public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
@@ -153,6 +175,11 @@ public class SimulationController implements IClockTickable {
 
     public void setCycleDurationMs(int ms) {
         this.clock.setCycleDurationMs(ms);
+    }
+
+    /** Consulta el intervalo configurado, sin modificar reloj ni computadores. */
+    public int getCycleDurationMs() {
+        return this.clock.getCycleDurationMs();
     }
 
     public int getCurrentCycle() {

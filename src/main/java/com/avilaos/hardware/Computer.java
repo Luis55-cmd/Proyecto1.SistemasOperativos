@@ -13,6 +13,7 @@ import com.avilaos.memory.MemoryManager;
  */
 public class Computer {
     private int id;
+    private String name;
     private CPU cpu;
     private RAM ram;
     private DMA dma;
@@ -22,12 +23,24 @@ public class Computer {
 
     public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica) {
         this.id = id;
+        this.name = "Computador " + id;
         this.cpu = cpu;
         this.ram = ram;
         this.dma = dma;
         this.kernel = kernel;
         this.politica = politica;
         this.memoryManager = (ram != null) ? new com.avilaos.memory.MemoryManager(ram) : null;
+    }
+
+    /** Nombre visible; el ID sigue siendo la identidad. No cambia hardware ni reloj. */
+    public String getName() { return name; }
+
+    /** Entrada nombre no vacío; elimina espacios externos. Error sin mutación. Sin ciclos. */
+    public void setName(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("El computador necesita un nombre.");
+        }
+        this.name = name.trim();
     }
 
     public SchedulingPolicyType getPolitica() {

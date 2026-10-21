@@ -117,7 +117,10 @@ public class GlobalClock implements Runnable {
         }
 
         synchronized (subscribers) {
-            for (IClockTickable subscriber : subscribers) {
+            // Solución: Uso del iterador manual instanciado desde la clase concreta
+            MyLinkedList<IClockTickable>.MyLinkedListIterator iterator = subscribers.iterator();
+            while (iterator.hasNext()) {
+                IClockTickable subscriber = iterator.next();
                 try {
                     subscriber.tick(current);
                 } catch (Exception e) {
@@ -194,8 +197,9 @@ public class GlobalClock implements Runnable {
             this.cycleCounter = 0;
         }
         synchronized (subscribers) {
+            // Optimizado para usar deleteFirst en lugar de buscar por índice repetidamente
             while (!subscribers.isEmpty()) {
-                subscribers.remove(subscribers.get(0));
+                subscribers.deleteFirst();
             }
         }
     }

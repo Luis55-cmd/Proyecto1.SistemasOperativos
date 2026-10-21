@@ -55,7 +55,7 @@ public class ProducerConsumerDriver {
         }
 
         // Operaciones de sincronización de semáforos se ejecutan en modo SYSTEM (llamada al sistema)
-        pcb.setMode(ExecutionMode.SYSTEM);
+        pcb.setMode(ExecutionMode.KERNEL);
 
         switch (pcb.getSyncStage()) {
             case 0 -> {

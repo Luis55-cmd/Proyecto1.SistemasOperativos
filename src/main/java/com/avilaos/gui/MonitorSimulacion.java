@@ -2,10 +2,13 @@ package com.avilaos.gui;
 
 import com.avilaos.hardware.Computer;
 import com.avilaos.core.model.ProcessControlBlock;
+import com.avilaos.core.model.SchedulingPolicyType;
+import com.avilaos.core.structures.MyLinkedList;
 import com.avilaos.simulation.SimulationController;
 import java.awt.*;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.text.DefaultCaret;
 import static com.avilaos.gui.PanelPrincipal.*;
 
 /** Monitor de lectura interactivo. Se actualiza vía Observer desde el SimulationController. */
@@ -35,6 +38,11 @@ public final class MonitorSimulacion extends JPanel {
     private final JScrollPane scrollColas = new JScrollPane(tablaColas);
     private final JPanel panelDetalleColas = new JPanel(new BorderLayout(0, 8));
 
+    // LOG DE EVENTOS DEL SISTEMA
+    private final JTextArea areaLog = new JTextArea();
+    private final JScrollPane scrollLog = new JScrollPane(areaLog);
+    private final JPanel panelLog = new JPanel(new BorderLayout(0, 8));
+
     public MonitorSimulacion(SimulationController controller, Runnable irAComputadores) {
         super(new BorderLayout(0, 20));
         this.controller = controller;
@@ -57,7 +65,7 @@ public final class MonitorSimulacion extends JPanel {
         cabecera.add(intervaloAplicado);
         cabecera.add(Box.createVerticalStrut(16));
         
-        // Configuración de la tabla de colas (columnas divididas equitativamente)
+        // Configuración de la tabla de colas
         tablaColas.setFillsViewportHeight(true);
         tablaColas.getTableHeader().setReorderingAllowed(false);
         tablaColas.setRowHeight(24);
@@ -72,7 +80,6 @@ public final class MonitorSimulacion extends JPanel {
         panelDetalleColas.setVisible(false);
         
         cabecera.add(panelDetalleColas);
-        
         add(cabecera, BorderLayout.NORTH);
         
         tarjetas.setOpaque(false);
@@ -106,15 +113,44 @@ public final class MonitorSimulacion extends JPanel {
         pestanas.addTab("Resumen", resumen);
         
         add(pestanas, BorderLayout.CENTER);
-        
         pestanas.addChangeListener(e -> actualizarDetalleColasGlobal());
         
+        // --- CONFIGURACIÓN DEL LOG DE EVENTOS ---
+        areaLog.setEditable(false);
+        areaLog.setBackground(new Color(25, 25, 25)); // Fondo oscuro terminal
+        areaLog.setForeground(new Color(0, 200, 0));  // Texto verde terminal
+        areaLog.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        areaLog.setMargin(new Insets(5, 5, 5, 5));
+        
+        // Auto-scroll al añadir nuevo texto
+        DefaultCaret caret = (DefaultCaret) areaLog.getCaret();
+        caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
+        
+        scrollLog.setPreferredSize(new Dimension(Integer.MAX_VALUE, 140));
+        
+        panelLog.setOpaque(false);
+        JLabel tituloLog = texto("LOG DE EVENTOS DEL SISTEMA", 12, TINTA, true);
+        panelLog.add(tituloLog, BorderLayout.NORTH);
+        panelLog.add(scrollLog, BorderLayout.CENTER);
+        
+        add(panelLog, BorderLayout.SOUTH);
+
         // --- CONEXIÓN AL CONTROLADOR (OBSERVER) ---
-        // Elimina la necesidad del Timer: el controlador avisa cuándo repintar
         this.controller.addGUIListener(() -> {
             if (isShowing()) {
                 actualizarVista();
             }
+        });
+    }
+
+    /**
+     * Método público para añadir un evento al log desde cualquier parte del simulador.
+     * @param mensaje El texto descriptivo del evento.
+     */
+    public void agregarLog(String mensaje) {
+        SwingUtilities.invokeLater(() -> {
+            String timestamp = String.format("[Ciclo %d] ", controller.getCurrentCycle());
+            areaLog.append(timestamp + mensaje + "\n");
         });
     }
 
@@ -157,17 +193,18 @@ public final class MonitorSimulacion extends JPanel {
         String marcha = !controller.isRunning() ? "Detenida" : controller.isPaused() ? "Pausada" : "En ejecución";
         actualizarControlesReloj();
         synchronized (controller) {
-            int cantidad = controller.getComputers().size();
+            MyLinkedList<Computer> computadores = controller.getComputers();
+            int cantidad = computadores.size();
             boolean cambio = cantidad != ids.length;
             if (!cambio) {
                 for (int i = 0; i < cantidad; i++) {
-                    if (ids[i] != controller.getComputers().get(i).getId()) { cambio = true; break; }
+                    if (ids[i] != computadores.get(i).getId()) { cambio = true; break; }
                 }
             }
             if (cambio || cantidad == 0 && tarjetas.getComponentCount() == 0) reconstruirPestanas();
             
             for (int i = 0; i < cantidad; i++) {
-                Computer c = controller.getComputers().get(i);
+                Computer c = computadores.get(i);
                 resumenes[i].actualizar(c);
                 detalles[i].actualizar(c);
                 pestanas.setTitleAt(i + 1, c.getName());
@@ -181,7 +218,8 @@ public final class MonitorSimulacion extends JPanel {
     
     private void actualizarDetalleColasGlobal() {
         int seleccion = pestanas.getSelectedIndex();
-        int cantidad = controller.getComputers().size();
+        MyLinkedList<Computer> computadores = controller.getComputers();
+        int cantidad = computadores.size();
         
         if (cantidad == 0) {
             panelDetalleColas.setVisible(false);
@@ -192,16 +230,14 @@ public final class MonitorSimulacion extends JPanel {
         int compIndex = seleccion > 0 ? seleccion - 1 : 0;
         
         if (compIndex < cantidad) {
-            Computer c = controller.getComputers().get(compIndex);
+            Computer c = computadores.get(compIndex);
             var kernel = c.getKernel();
             
-            // Extraer y limpiar los elementos usando el toString() de MyQueue
             String[] nuevos = extraerElementos(kernel.getNewQueue().toString());
             String[] listos = extraerElementos(kernel.getReadyQueue().toString());
             String[] bloqueados = extraerElementos(kernel.getBlockedQueue().toString());
             String[] terminados = extraerElementos(kernel.getEndedQueue().toString());
             
-            // Determinar qué cola tiene más procesos para crear ese número de filas
             int maxFilas = Math.max(Math.max(nuevos.length, listos.length), Math.max(bloqueados.length, terminados.length));
             
             modeloColas.setRowCount(0);
@@ -216,7 +252,6 @@ public final class MonitorSimulacion extends JPanel {
         }
     }
     
-    /** Método de ayuda para convertir "[P(1), P(2)]" en un arreglo de Strings limpios */
     private String[] extraerElementos(String textoCola) {
         if (textoCola == null) return new String[0];
         String limpio = textoCola.trim();
@@ -231,16 +266,19 @@ public final class MonitorSimulacion extends JPanel {
         int seleccionado = seleccion > 0 ? ids[seleccion - 1] : -1;
         while (pestanas.getTabCount() > 1) pestanas.removeTabAt(1);
         tarjetas.removeAll();
-        int cantidad = controller.getComputers().size();
+        
+        MyLinkedList<Computer> computadores = controller.getComputers();
+        int cantidad = computadores.size();
         ids = new int[cantidad];
         resumenes = new VistaComputador[cantidad];
         detalles = new VistaComputador[cantidad];
+        
         if (cantidad == 0) tarjetas.add(vacio);
         for (int i = 0; i < cantidad; i++) {
-            Computer c = controller.getComputers().get(i);
+            Computer c = computadores.get(i);
             ids[i] = c.getId();
-            resumenes[i] = new VistaComputador(false);
-            detalles[i] = new VistaComputador(true);
+            resumenes[i] = new VistaComputador(c, false);
+            detalles[i] = new VistaComputador(c, true);
             int indice = i + 1;
             JButton abrir = accion("Ver detalle →", false);
             abrir.addActionListener(e -> pestanas.setSelectedIndex(indice));
@@ -259,8 +297,9 @@ public final class MonitorSimulacion extends JPanel {
     }
 
     private static final class VistaComputador extends JPanel {
+        private final Computer computador;
         private final JLabel nombre = texto("", 20, TINTA, true);
-        private final JLabel politica = texto("", 13, GRIS, false);
+        private final JComboBox<SchedulingPolicyType> comboPolitica = new JComboBox<>(SchedulingPolicyType.values());
         private final JLabel cpu = texto("", 14, TINTA, true);
         private final JLabel proceso = texto("", 13, GRIS, false);
         private final JLabel registros = texto("", 13, GRIS, false);
@@ -268,13 +307,37 @@ public final class MonitorSimulacion extends JPanel {
         private final JLabel memoria = texto("", 13, GRIS, false);
         private final boolean detalle;
 
-        VistaComputador(boolean detalle) {
+        VistaComputador(Computer c, boolean detalle) {
+            this.computador = c;
             this.detalle = detalle;
             setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
             setBackground(PAPEL);
             setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(BORDE),
                     BorderFactory.createEmptyBorder(22, 22, 22, 22)));
-            add(nombre); add(Box.createVerticalStrut(8)); add(politica);
+            
+            JPanel panelPolitica = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            panelPolitica.setOpaque(false);
+            panelPolitica.setAlignmentX(Component.LEFT_ALIGNMENT);
+            panelPolitica.add(texto("Política: ", 13, GRIS, false));
+            
+            comboPolitica.setSelectedItem(c.getPolitica());
+            comboPolitica.setPreferredSize(new Dimension(160, 26));
+            comboPolitica.addActionListener(e -> {
+                SchedulingPolicyType seleccion = (SchedulingPolicyType) comboPolitica.getSelectedItem();
+                if (seleccion != null && seleccion != computador.getPolitica()) {
+                    computador.setPolitica(seleccion);
+                }
+            });
+            panelPolitica.add(comboPolitica);
+
+            nombre.setAlignmentX(Component.LEFT_ALIGNMENT);
+            cpu.setAlignmentX(Component.LEFT_ALIGNMENT);
+            proceso.setAlignmentX(Component.LEFT_ALIGNMENT);
+            registros.setAlignmentX(Component.LEFT_ALIGNMENT);
+            memoria.setAlignmentX(Component.LEFT_ALIGNMENT);
+            colas.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            add(nombre); add(Box.createVerticalStrut(8)); add(panelPolitica);
             add(Box.createVerticalStrut(20)); add(cpu);
             add(Box.createVerticalStrut(8)); add(proceso);
             if (detalle) { add(Box.createVerticalStrut(8)); add(registros); }
@@ -285,10 +348,11 @@ public final class MonitorSimulacion extends JPanel {
 
         void actualizar(Computer c) {
             nombre.setText(c.getName() + " · ID " + c.getId());
-            politica.setText("Política: " + switch (c.getPolitica()) {
-                case FCFS -> "FCFS"; case ROUND_ROBIN -> "Round Robin";
-                case EDF -> "EDF"; case PRIORITY_PREEMPTIVE -> "Prioridades";
-            });
+            
+            if (comboPolitica.getSelectedItem() != c.getPolitica()) {
+                comboPolitica.setSelectedItem(c.getPolitica());
+            }
+
             ProcessControlBlock p = c.getCpu().getPCB();
             cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
             proceso.setText(p == null ? "Sin proceso" : "Proceso: " + p.getName() + " · ID " + p.getId());

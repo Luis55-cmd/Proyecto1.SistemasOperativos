@@ -3,23 +3,42 @@ package com.avilaos.gui;
 import java.awt.*;
 import com.avilaos.simulation.SimulationController;
 import com.avilaos.hardware.Computer;
+import com.avilaos.sync.Buffer;
+import com.avilaos.core.model.*;
+
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import static com.avilaos.gui.PanelPrincipal.*;
 
-/** Borrador visual de programa. No representa PCB, imagen cargada ni proceso admitido. */
+/** Borrador visual de programa. Incluye opciones avanzadas para Productor/Consumidor e inyección al Kernel. */
 public class EditorProceso extends JPanel {
-    // Arreglos propios del borrador: una fila es un bloque, no una instrucción ejecutada.
+    // Arreglos propios del borrador
     private final String[] operaciones = new String[100];
     private final int[] duraciones = new int[100];
     private int cantidad;
     private final JComboBox<DestinoComputador> destino = new JComboBox<>();
     private final JButton crearComputador = accion("Crea un computador primero →", true);
 
-    /** Copia visual: conserva ID entero y nombre, sin modificar el computador real. */
+    // --- COMPONENTES DEL ENCABEZADO Y CREACIÓN ---
+    private final JTextField campoNombre = new JTextField();
+    private final JSpinner spinnerPrioridad = new JSpinner(new SpinnerNumberModel(1, 1, 10, 1));
+    
+    // Selector de tipo de proceso
+    private final JComboBox<ProcessType> comboTipoProceso = new JComboBox<>(ProcessType.values());
+    
+    // Panel y campos exclusivos para Productor/Consumidor
+    private final JPanel panelSync = new JPanel(new GridLayout(1, 3, 24, 0));
+    private final JComboBox<String> comboBufferId = new JComboBox<>(); 
+    private final JSpinner spinnerCiclosOperacion = new JSpinner(new SpinnerNumberModel(1, 1, 1000, 1));
+    private final JSpinner spinnerElementos = new JSpinner(new SpinnerNumberModel(1, 1, 1000, 1));
+    
+    private final JButton botonCrear = accion("Crear y enviar al Kernel", true);
+    // ---------------------------------------------
+
     private record DestinoComputador(int id, String nombre) {
         @Override public String toString() { return nombre + " · ID " + id; }
     }
+    
     private final JComboBox<String> operacion = new JComboBox<>(new String[]{"CPU", "E/S"});
     private final JSpinner ticks = new JSpinner(new SpinnerNumberModel(5, 1, 10000, 1));
     private final JLabel resumen = texto("0 bloques  ·  CPU: 0 ticks  ·  E/S: 0 ticks", 13, TINTA, true);
@@ -27,28 +46,56 @@ public class EditorProceso extends JPanel {
     private final ModeloBloques modelo = new ModeloBloques();
     private final JTable tabla = new JTable(modelo);
 
-    /** Construye formulario y conecta listeners; no ejecuta operaciones al construirlo. */
     public EditorProceso(Runnable irAComputadores) {
         super(new BorderLayout());
         JPanel pagina = pagina("PROCESOS", "Compón tu programa", "Define una secuencia de CPU y E/S, y el computador que la ejecutará.");
         JPanel identidad = tarjeta();
-        JPanel campos = new JPanel(new GridLayout(1, 2, 24, 0));
-        campos.setOpaque(false);
-        campos.add(campo("Nombre del proceso", new JTextField()));
-        campos.add(campo("Computador destino", destino));
-        identidad.add(campos);
+        identidad.setLayout(new BoxLayout(identidad, BoxLayout.Y_AXIS));
+        
+        // Fila 1: Datos generales
+        JPanel camposGral = new JPanel(new GridLayout(1, 4, 16, 0));
+        camposGral.setOpaque(false);
+        camposGral.add(campo("Nombre del proceso", campoNombre));
+        camposGral.add(campo("Computador destino", destino));
+        camposGral.add(campo("Prioridad", spinnerPrioridad));
+        camposGral.add(campo("Tipo de Proceso", comboTipoProceso));
+        
+        // Fila 2: Datos de Sincronización (Oculto por defecto)
+        panelSync.setOpaque(false);
+        panelSync.add(campo("ID del Buffer", comboBufferId)); 
+        panelSync.add(campo("Ciclos x Operación", spinnerCiclosOperacion));
+        panelSync.add(campo("Cant. Elementos", spinnerElementos));
+        panelSync.setVisible(false);
+        
+        // Lógica para mostrar/ocultar las opciones de Productor/Consumidor
+        comboTipoProceso.addActionListener(e -> {
+            ProcessType tipo = (ProcessType) comboTipoProceso.getSelectedItem();
+            boolean esSync = (tipo == ProcessType.PRODUCER || tipo == ProcessType.CONSUMER);
+            panelSync.setVisible(esSync);
+            identidad.revalidate();
+            identidad.repaint();
+        });
+
+        identidad.add(camposGral);
+        identidad.add(Box.createVerticalStrut(12));
+        identidad.add(panelSync);
+        
         crearComputador.addActionListener(e -> irAComputadores.run());
+        crearComputador.setAlignmentX(Component.LEFT_ALIGNMENT);
         identidad.add(Box.createVerticalStrut(10));
         identidad.add(crearComputador);
+        
         pagina.add(identidad);
         pagina.add(Box.createVerticalStrut(18));
 
+        // --- RESTO DE LA INTERFAZ VISUAL ---
         JPanel editor = tarjeta();
         editor.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
         editor.add(texto("Secuencia del programa", 19, TINTA, true));
         editor.add(Box.createVerticalStrut(8));
         editor.add(texto("CPU: trabajo de cálculo. E/S: duración de una operación de espera.", 12, GRIS, false));
         editor.add(Box.createVerticalStrut(18));
+        
         JPanel controles = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         controles.setOpaque(false); controles.setAlignmentX(LEFT_ALIGNMENT);
         operacion.setPreferredSize(new Dimension(90, 36));
@@ -72,17 +119,27 @@ public class EditorProceso extends JPanel {
         tabla.getTableHeader().setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
         tabla.getTableHeader().setPreferredSize(new Dimension(0, 32));
         tabla.setFillsViewportHeight(true);
+        
         JScrollPane scroll = new JScrollPane(tabla);
         scroll.setColumnHeaderView(tabla.getTableHeader());
         scroll.setAlignmentX(LEFT_ALIGNMENT);
         scroll.setPreferredSize(new Dimension(500, 160));
         scroll.setBorder(BorderFactory.createLineBorder(BORDE));
         editor.add(scroll); editor.add(Box.createVerticalStrut(12));
+        
         JPanel acciones = new JPanel(new BorderLayout()); acciones.setOpaque(false);
         acciones.setAlignmentX(LEFT_ALIGNMENT);
         JButton quitar = accion("Quitar seleccionado", false);
         quitar.addActionListener(e -> quitarBloque());
-        acciones.add(quitar, BorderLayout.WEST); acciones.add(resumen, BorderLayout.EAST);
+        acciones.add(quitar, BorderLayout.WEST);
+        
+        JPanel panelCrear = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        panelCrear.setOpaque(false);
+        botonCrear.addActionListener(e -> generarPCB());
+        panelCrear.add(botonCrear);
+        acciones.add(panelCrear, BorderLayout.CENTER);
+
+        acciones.add(resumen, BorderLayout.EAST);
         acciones.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
         mensaje.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
         editor.add(acciones); editor.add(Box.createVerticalStrut(10)); editor.add(mensaje);
@@ -91,44 +148,53 @@ public class EditorProceso extends JPanel {
         pagina.add(Box.createVerticalStrut(6));
         pagina.add(texto("La memoria calculada y los protocolos de sincronización se conectarán después.", 12, GRIS, false));
         add(pagina);
+
+        // --- CONEXIÓN AUTOMÁTICA AL CONTROLADOR ---
+        SimulationController.getInstance().addGUIListener(this::actualizarListas);
+        actualizarListas(); // Llamada inicial
     }
 
-    /**
-     * Entrada: controlador existente; salida: opciones reales del selector.
-     * Guarda ID seleccionado, vacía opciones y recorre computadores hasta size.
-     * Restaura el ID si aún existe; de otro modo queda el primero disponible.
-     * Sin computadores: selector deshabilitado y botón para ir a crearlos.
-     * Sólo cambia la vista; no altera nombre del proceso, bloques ni simulación.
-     * Conexión: mostrarPanel(PROCESO) → esta función. Ejecutar en EDT.
-     */
-    public void actualizarComputadores(SimulationController controller) {
-        Integer seleccionado = getComputadorDestinoId();
+    /** Extrae los computadores y buffers disponibles directamente del controlador */
+    public void actualizarListas() {
+        SimulationController ctrl = SimulationController.getInstance();
+        
+        // 1. Actualizar Computadores
+        Integer compSeleccionado = getComputadorDestinoId();
         destino.removeAllItems();
-        for (int i = 0; i < controller.getComputers().size(); i++) {
-            Computer c = controller.getComputers().get(i);
+        for (int i = 0; i < ctrl.getComputers().size(); i++) {
+            Computer c = ctrl.getComputers().get(i);
             DestinoComputador opcion = new DestinoComputador(c.getId(), c.getName());
             destino.addItem(opcion);
-            if (seleccionado != null && seleccionado == c.getId()) destino.setSelectedItem(opcion);
+            if (compSeleccionado != null && compSeleccionado == c.getId()) destino.setSelectedItem(opcion);
         }
         boolean hayComputadores = destino.getItemCount() > 0;
         destino.setEnabled(hayComputadores);
         crearComputador.setVisible(!hayComputadores);
+
+        // 2. Actualizar Buffers
+        String bufferSeleccionado = (String) comboBufferId.getSelectedItem();
+        comboBufferId.removeAllItems();
+        boolean contieneBuffer = false;
+        
+        for (int i = 0; i < ctrl.getBuffers().size(); i++) {
+            Buffer b = ctrl.getBuffers().get(i);
+            String idStr = String.valueOf(b.getId());
+            comboBufferId.addItem(idStr);
+            if (bufferSeleccionado != null && bufferSeleccionado.equals(idStr)) {
+                contieneBuffer = true;
+            }
+        }
+        
+        if (contieneBuffer) {
+            comboBufferId.setSelectedItem(bufferSeleccionado);
+        }
     }
 
-    /** Devuelve ID de destino o null si no existe selección; sin efectos ni recorridos. */
     public Integer getComputadorDestinoId() {
         DestinoComputador seleccionado = (DestinoComputador) destino.getSelectedItem();
         return seleccionado == null ? null : seleccionado.id();
     }
 
-    /**
-     * Entradas: operación seleccionada y ticks del spinner. Salida void.
-     * Efecto: agrega una fila a los arreglos y actualiza tabla/resumen; no modifica RAM.
-     * Condiciones: máximo 100 bloques; ticks enteros entre 1 y 10 000.
-     * Error: muestra mensaje, sin modificar el borrador. Sin ciclos propios.
-     * Conexiones: botón → esta función → modelo Swing + actualizarResumen.
-     * Normal: CPU,5 agrega UN bloque CPU de cinco ticks; aún no expande instrucciones.
-     */
     private void agregarBloque() {
         if (cantidad == operaciones.length) {
             mensaje.setText("Límite del prototipo: 100 bloques. Quita uno antes de agregar otro."); return;
@@ -146,11 +212,6 @@ public class EditorProceso extends JPanel {
         mensaje.setText("Bloque agregado. La secuencia se lee de arriba hacia abajo.");
     }
 
-    /**
-     * Entrada: fila seleccionada. Salida void. Sin selección: mensaje sin mutación.
-     * Desplaza las filas posteriores una posición; ciclo termina en cantidad-1.
-     * Limpia la última celda y actualiza tabla/resumen. No toca procesos reales.
-     */
     private void quitarBloque() {
         int fila = tabla.getSelectedRow();
         if (fila < 0) { mensaje.setText("Selecciona el bloque que quieres quitar."); return; }
@@ -164,8 +225,6 @@ public class EditorProceso extends JPanel {
         mensaje.setText("Bloque eliminado. El resto conserva su orden.");
     }
 
-    /** Lee el borrador; suma CPU/E/S por separado hasta cantidad. Sólo cambia el rótulo.
-     * No calcula tiempo final (esperas y costos SO no están modelados) ni memoria. */
     private void actualizarResumen() {
         int cpu = 0, es = 0;
         for (int i = 0; i < cantidad; i++) {
@@ -174,8 +233,73 @@ public class EditorProceso extends JPanel {
         resumen.setText(cantidad + " bloques  ·  CPU: " + cpu + " ticks  ·  E/S: " + es + " ticks");
     }
 
-    /** Adaptador de lectura entre arreglos propios y JTable; no es el modelo del proceso.
-     * JTable consulta filas/columnas válidas. Celdas no editables; no muta el borrador. */
+    public void generarPCB() {
+        String nombre = campoNombre.getText().trim();
+        Integer idComputador = getComputadorDestinoId();
+        ProcessType tipo = (ProcessType) comboTipoProceso.getSelectedItem();
+
+        try { 
+            spinnerPrioridad.commitEdit(); 
+            spinnerCiclosOperacion.commitEdit();
+            spinnerElementos.commitEdit();
+        } catch (Exception ignored) {}
+        
+        int prioridad = (Integer) spinnerPrioridad.getValue();
+
+        if (nombre.isEmpty()) {
+            mensaje.setText("Error: Escribe un nombre para el proceso.");
+            return;
+        }
+        if (idComputador == null) {
+            mensaje.setText("Error: Selecciona un computador destino.");
+            return;
+        }
+        if (cantidad == 0) {
+            mensaje.setText("Error: Añade al menos un bloque de ejecución.");
+            return;
+        }
+        
+        if (tipo == ProcessType.PRODUCER || tipo == ProcessType.CONSUMER) {
+            if (comboBufferId.getItemCount() == 0 || comboBufferId.getSelectedItem() == null) {
+                mensaje.setText("Error: No puedes crear este proceso. Debes crear un Buffer primero.");
+                return;
+            }
+        }
+
+        int totalTicks = 0;
+        for (int i = 0; i < cantidad; i++) {
+            totalTicks += duraciones[i];
+        }
+
+        int memoriaAsignada = 100;
+        int deadline = totalTicks * 2;
+        
+        SimulationController controller = SimulationController.getInstance();
+        ProcessControlBlock nuevoPCB;
+
+        if (tipo == ProcessType.PRODUCER || tipo == ProcessType.CONSUMER) {
+            String targetBuffer = (String) comboBufferId.getSelectedItem();
+            int ciclosOp = (Integer) spinnerCiclosOperacion.getValue();
+            int reqElem = (Integer) spinnerElementos.getValue();
+            
+            nuevoPCB = controller.createProcess(
+                    nombre, idComputador, tipo, totalTicks, memoriaAsignada, 
+                    prioridad, deadline, targetBuffer, ciclosOp, reqElem
+            );
+        } else {
+            nuevoPCB = controller.createProcess(
+                    nombre, idComputador, tipo, totalTicks, memoriaAsignada, 
+                    prioridad, deadline
+            );
+        }
+
+        if (nuevoPCB != null) {
+            mensaje.setText("¡PCB '" + nombre + "' enviado exitosamente al Computador " + idComputador + "!");
+        } else {
+            mensaje.setText("Error: No se pudo inyectar el proceso en el simulador.");
+        }
+    }
+
     private class ModeloBloques extends AbstractTableModel {
         @Override public int getRowCount() { return cantidad; }
         @Override public int getColumnCount() { return 3; }

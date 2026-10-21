@@ -5,9 +5,10 @@ import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.simulation.SimulationController;
 import java.awt.*;
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 import static com.avilaos.gui.PanelPrincipal.*;
 
-/** Monitor de lectura y controles explícitos del reloj vía SimulationController. */
+/** Monitor de lectura interactivo. Se actualiza vía Observer desde el SimulationController. */
 public final class MonitorSimulacion extends JPanel {
     private final SimulationController controller;
     private final JTabbedPane pestanas = new JTabbedPane(JTabbedPane.BOTTOM, JTabbedPane.SCROLL_TAB_LAYOUT);
@@ -18,20 +19,28 @@ public final class MonitorSimulacion extends JPanel {
     private int[] ids = new int[0];
     private VistaComputador[] resumenes = new VistaComputador[0];
     private VistaComputador[] detalles = new VistaComputador[0];
-    private final Timer refresco;
+    
     private final JButton iniciar = accion("Iniciar", true);
     private final JButton pausar = accion("Pausar", false);
     private final JButton paso = accion("+1 tick", false);
     private final JButton aplicar = accion("Aplicar", false);
     private final JComboBox<Integer> intervalo = new JComboBox<>(new Integer[]{100, 250, 500, 1000});
     private final JLabel intervaloAplicado = texto("", 12, GRIS, false);
+    
+    // TABLA DE COLAS: Las colas son los encabezados
+    private final DefaultTableModel modeloColas = new DefaultTableModel(new Object[]{"Nuevos", "Listos", "Bloqueados", "Terminados"}, 0) {
+        @Override public boolean isCellEditable(int row, int column) { return false; }
+    };
+    private final JTable tablaColas = new JTable(modeloColas);
+    private final JScrollPane scrollColas = new JScrollPane(tablaColas);
+    private final JPanel panelDetalleColas = new JPanel(new BorderLayout(0, 8));
 
-    /** Entradas controlador y navegación. Construye vistas y programa refresco, sin arrancarlo aún. */
     public MonitorSimulacion(SimulationController controller, Runnable irAComputadores) {
         super(new BorderLayout(0, 20));
         this.controller = controller;
         setBackground(FONDO);
         setBorder(BorderFactory.createEmptyBorder(28, 28, 24, 28));
+        
         JPanel cabecera = new JPanel();
         cabecera.setLayout(new BoxLayout(cabecera, BoxLayout.Y_AXIS));
         cabecera.setOpaque(false);
@@ -46,13 +55,33 @@ public final class MonitorSimulacion extends JPanel {
         cabecera.add(controlesReloj());
         cabecera.add(Box.createVerticalStrut(6));
         cabecera.add(intervaloAplicado);
+        cabecera.add(Box.createVerticalStrut(16));
+        
+        // Configuración de la tabla de colas (columnas divididas equitativamente)
+        tablaColas.setFillsViewportHeight(true);
+        tablaColas.getTableHeader().setReorderingAllowed(false);
+        tablaColas.setRowHeight(24);
+        scrollColas.setPreferredSize(new Dimension(Integer.MAX_VALUE, 120));
+        scrollColas.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
+        
+        panelDetalleColas.setOpaque(false);
+        panelDetalleColas.setAlignmentX(LEFT_ALIGNMENT);
+        JLabel tituloColas = texto("DETALLE DE COLAS DEL KERNEL (Comp. seleccionado)", 12, TINTA, true);
+        panelDetalleColas.add(tituloColas, BorderLayout.NORTH);
+        panelDetalleColas.add(scrollColas, BorderLayout.CENTER);
+        panelDetalleColas.setVisible(false);
+        
+        cabecera.add(panelDetalleColas);
+        
         add(cabecera, BorderLayout.NORTH);
+        
         tarjetas.setOpaque(false);
         vacio.add(texto("Todavía no hay computadores", 20, TINTA, true));
         vacio.add(Box.createVerticalStrut(16));
         JButton crear = accion("Crear un computador →", true);
         crear.addActionListener(e -> irAComputadores.run());
         vacio.add(crear);
+        
         JPanel resumen = new JPanel(new BorderLayout(0, 16));
         resumen.setOpaque(false);
         JPanel contenido = new JPanel(new BorderLayout());
@@ -63,7 +92,7 @@ public final class MonitorSimulacion extends JPanel {
         scroll.getViewport().setBackground(FONDO);
         resumen.add(scroll, BorderLayout.CENTER);
         resumen.add(texto("CPU: estado actual · Utilización histórica y métricas: pendientes", 12, GRIS, false), BorderLayout.SOUTH);
-        // Evita la presentación segmentada de Aqua, que dibuja las pestañas sobre el borde.
+        
         pestanas.setUI(new javax.swing.plaf.basic.BasicTabbedPaneUI() {
             @Override protected void installDefaults() {
                 super.installDefaults();
@@ -75,24 +104,33 @@ public final class MonitorSimulacion extends JPanel {
         pestanas.setBackground(PAPEL);
         pestanas.setForeground(TINTA);
         pestanas.addTab("Resumen", resumen);
-        add(pestanas);
-        // Timer de Swing invoca en EDT: modifica rótulos, no genera ticks del simulador.
-        refresco = new Timer(500, e -> { if (isShowing()) actualizarVista(); });
+        
+        add(pestanas, BorderLayout.CENTER);
+        
+        pestanas.addChangeListener(e -> actualizarDetalleColasGlobal());
+        
+        // --- CONEXIÓN AL CONTROLADOR (OBSERVER) ---
+        // Elimina la necesidad del Timer: el controlador avisa cuándo repintar
+        this.controller.addGUIListener(() -> {
+            if (isShowing()) {
+                actualizarVista();
+            }
+        });
     }
 
-    /** Construye controles; entradas clic/selección, salida panel. Sin ciclos ni cambios de reloj.
-     * Cada listener llama una función concreta; elegir intervalo sólo habilita Aplicar. */
     private JPanel controlesReloj() {
         JPanel controles = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         controles.setOpaque(false);
         controles.setAlignmentX(LEFT_ALIGNMENT);
         intervalo.setSelectedItem(controller.getCycleDurationMs());
-        intervalo.setToolTipText("Milisegundos por tick; el cambio requiere Aplicar");
         intervalo.setPreferredSize(new Dimension(90, 36));
-        iniciar.addActionListener(e -> iniciarReloj());
-        pausar.addActionListener(e -> pausarReloj());
-        paso.addActionListener(e -> avanzarUnTick());
-        aplicar.addActionListener(e -> aplicarIntervalo());
+        iniciar.addActionListener(e -> controller.startSimulation());
+        pausar.addActionListener(e -> { if (controller.isRunning() && !controller.isPaused()) controller.pauseSimulation(); });
+        paso.addActionListener(e -> { if (!controller.isRunning() || controller.isPaused()) controller.stepSimulation(); });
+        aplicar.addActionListener(e -> {
+            Integer ms = (Integer) intervalo.getSelectedItem();
+            if (ms != null) { controller.setCycleDurationMs(ms); actualizarControlesReloj(); }
+        });
         intervalo.addActionListener(e -> actualizarControlesReloj());
         controles.add(iniciar); controles.add(pausar); controles.add(paso);
         controles.add(texto("Intervalo (ms)", 12, GRIS, false));
@@ -101,39 +139,6 @@ public final class MonitorSimulacion extends JPanel {
         return controles;
     }
 
-    /** Clic → startSimulation. Arranca o reanuda, incluso sin computadores; no reinicia ciclo.
-     * Salida void; sin ciclos. Si ya corre, no crea otro hilo. */
-    private void iniciarReloj() {
-        controller.startSimulation();
-        actualizarVista();
-    }
-
-    /** Clic → pauseSimulation. Conserva contador; un tick ya iniciado puede completar.
-     * Detenido/pausado: no opera. Sin ciclos; refresca controles. */
-    private void pausarReloj() {
-        if (controller.isRunning() && !controller.isPaused()) controller.pauseSimulation();
-        actualizarVista();
-    }
-
-    /** Clic → stepSimulation. Sólo detenido/pausado; activo: no modifica nada.
-     * Avanza un tick y actualiza vista; sin ciclos propios. */
-    private void avanzarUnTick() {
-        if (controller.isRunning() && !controller.isPaused()) return;
-        controller.stepSimulation();
-        actualizarVista();
-    }
-
-    /** Entrada: opción del combo. Salida void. Sólo Aplicar cambia intervalo real.
-     * Sin selección no opera; no arranca ni reinicia. La espera en curso no se interrumpe. */
-    private void aplicarIntervalo() {
-        Integer ms = (Integer) intervalo.getSelectedItem();
-        if (ms == null) return;
-        controller.setCycleDurationMs(ms);
-        actualizarControlesReloj();
-    }
-
-    /** Lee estado/intervalo; escribe habilitación y rótulos, nunca cambia selección pendiente.
-     * Sin ciclos. Activo: deshabilita paso e inicio. Pausado: ofrece Reanudar. */
     private void actualizarControlesReloj() {
         boolean activo = controller.isRunning() && !controller.isPaused();
         iniciar.setText(controller.isRunning() && controller.isPaused() ? "Reanudar" : "Iniciar");
@@ -144,20 +149,9 @@ public final class MonitorSimulacion extends JPanel {
         int ms = controller.getCycleDurationMs();
         boolean pendiente = seleccionado != null && seleccionado != ms;
         aplicar.setEnabled(pendiente);
-        intervaloAplicado.setText("Aplicado: " + ms + " ms/tick" + (pendiente ? " · Cambio pendiente de aplicar" : ""));
+        intervaloAplicado.setText("Aplicado: " + ms + " ms/tick" + (pendiente ? " · Cambio pendiente" : ""));
     }
 
-    @Override public void addNotify() { super.addNotify(); refresco.start(); }
-    @Override public void removeNotify() { refresco.stop(); super.removeNotify(); }
-
-    /**
-     * Entrada: estado actual del controlador; salida: rótulos y pestañas actualizados.
-     * Lee reloj fuera del bloqueo del controlador; luego protege la lectura de computadores
-     * frente a tick/createComputer sincronizados. No modifica el dominio. Usar en EDT.
-     * Ciclos: un recorrido finito de computadores para comparar IDs y otro para pintar datos.
-     * Lista vacía muestra navegación a creación. CPU vacía muestra Sin proceso.
-     * No convierte errores internos en valores cero ficticios.
-     */
     public void actualizarVista() {
         int ciclo = controller.getCurrentCycle();
         String marcha = !controller.isRunning() ? "Detenida" : controller.isPaused() ? "Pausada" : "En ejecución";
@@ -171,23 +165,67 @@ public final class MonitorSimulacion extends JPanel {
                 }
             }
             if (cambio || cantidad == 0 && tarjetas.getComponentCount() == 0) reconstruirPestanas();
+            
             for (int i = 0; i < cantidad; i++) {
                 Computer c = controller.getComputers().get(i);
                 resumenes[i].actualizar(c);
                 detalles[i].actualizar(c);
                 pestanas.setTitleAt(i + 1, c.getName());
             }
+            
             reloj.setText("Reloj global · ciclo " + ciclo);
             estado.setText(marcha + "  ·  " + cantidad + " computadores");
+            actualizarDetalleColasGlobal();
         }
     }
+    
+    private void actualizarDetalleColasGlobal() {
+        int seleccion = pestanas.getSelectedIndex();
+        int cantidad = controller.getComputers().size();
+        
+        if (cantidad == 0) {
+            panelDetalleColas.setVisible(false);
+            return;
+        }
+        
+        panelDetalleColas.setVisible(true);
+        int compIndex = seleccion > 0 ? seleccion - 1 : 0;
+        
+        if (compIndex < cantidad) {
+            Computer c = controller.getComputers().get(compIndex);
+            var kernel = c.getKernel();
+            
+            // Extraer y limpiar los elementos usando el toString() de MyQueue
+            String[] nuevos = extraerElementos(kernel.getNewQueue().toString());
+            String[] listos = extraerElementos(kernel.getReadyQueue().toString());
+            String[] bloqueados = extraerElementos(kernel.getBlockedQueue().toString());
+            String[] terminados = extraerElementos(kernel.getEndedQueue().toString());
+            
+            // Determinar qué cola tiene más procesos para crear ese número de filas
+            int maxFilas = Math.max(Math.max(nuevos.length, listos.length), Math.max(bloqueados.length, terminados.length));
+            
+            modeloColas.setRowCount(0);
+            for (int i = 0; i < maxFilas; i++) {
+                String n = (i < nuevos.length) ? nuevos[i] : "";
+                String l = (i < listos.length) ? listos[i] : "";
+                String b = (i < bloqueados.length) ? bloqueados[i] : "";
+                String t = (i < terminados.length) ? terminados[i] : "";
+                
+                modeloColas.addRow(new Object[]{n, l, b, t});
+            }
+        }
+    }
+    
+    /** Método de ayuda para convertir "[P(1), P(2)]" en un arreglo de Strings limpios */
+    private String[] extraerElementos(String textoCola) {
+        if (textoCola == null) return new String[0];
+        String limpio = textoCola.trim();
+        if (limpio.startsWith("[")) limpio = limpio.substring(1);
+        if (limpio.endsWith("]")) limpio = limpio.substring(0, limpio.length() - 1);
+        if (limpio.trim().isEmpty()) return new String[0];
+        return limpio.split(",\\s*");
+    }
 
-    /**
-     * Entrada: lista del controlador bajo su bloqueo. Reconstruye sólo si cambian IDs.
-     * Conserva pestaña por ID si existe; vuelve a Resumen si desaparece.
-     * Recorre computadores hasta size y elimina pestañas hasta dejar Resumen.
-     * Cada tarjeta conecta su botón con la pestaña de detalle, sin cambiar simulación.
-     */
     private void reconstruirPestanas() {
         int seleccion = pestanas.getSelectedIndex();
         int seleccionado = seleccion > 0 ? ids[seleccion - 1] : -1;
@@ -220,7 +258,6 @@ public final class MonitorSimulacion extends JPanel {
         tarjetas.revalidate(); tarjetas.repaint();
     }
 
-    /** Rótulos por computador, reutilizados en cada refresco para conservar la navegación. */
     private static final class VistaComputador extends JPanel {
         private final JLabel nombre = texto("", 20, TINTA, true);
         private final JLabel politica = texto("", 13, GRIS, false);
@@ -244,14 +281,8 @@ public final class MonitorSimulacion extends JPanel {
             add(Box.createVerticalStrut(20));
             add(memoria);
             add(Box.createVerticalStrut(20)); add(colas);
-            if (detalle) {
-                add(Box.createVerticalStrut(20));
-                add(texto("Detalle de colas, inspector PCB y cambio de política: pendientes", 12, GRIS, false));
-            }
         }
 
-        /** Lee un computador; actualiza rótulos sin mutarlo. Sin ciclos.
-         * RAM: muestra usada/total. CPU sin PCB: libre, sin modo activo. */
         void actualizar(Computer c) {
             nombre.setText(c.getName() + " · ID " + c.getId());
             politica.setText("Política: " + switch (c.getPolitica()) {
@@ -261,12 +292,15 @@ public final class MonitorSimulacion extends JPanel {
             ProcessControlBlock p = c.getCpu().getPCB();
             cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
             proceso.setText(p == null ? "Sin proceso" : "Proceso: " + p.getName() + " · ID " + p.getId());
+            
             if (detalle) registros.setText(p == null ? "PC: —  ·  Prioridad: —  ·  Deadline: —"
                     : "PC: " + c.getCpu().getPC() + "  ·  Prioridad: " + p.getPriority()
                     + "  ·  Deadline restante: " + p.getRemainingDeadline());
+            
             int total = c.getMemoryManager().getTotalMemory();
             int usada = c.getMemoryManager().getUsedMemory();
             memoria.setText("RAM " + usada + " / " + total);
+            
             var kernel = c.getKernel();
             colas.setText("Nuevos: " + kernel.getNewQueue().size() + "  ·  Listos: " + kernel.getReadyQueue().size()
                     + "  ·  Bloqueados: " + kernel.getBlockedQueue().size() + "  ·  Terminados: " + kernel.getEndedQueue().size());

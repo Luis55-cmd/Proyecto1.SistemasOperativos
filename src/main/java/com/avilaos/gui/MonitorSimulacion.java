@@ -30,7 +30,6 @@ public final class MonitorSimulacion extends JPanel {
     private final JComboBox<Integer> intervalo = new JComboBox<>(new Integer[]{100, 250, 500, 1000});
     private final JLabel intervaloAplicado = texto("", 12, GRIS, false);
     
-    // TABLA DE COLAS: Las colas son los encabezados
     private final DefaultTableModel modeloColas = new DefaultTableModel(new Object[]{"Nuevos", "Listos", "Bloqueados", "Terminados"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
@@ -38,16 +37,27 @@ public final class MonitorSimulacion extends JPanel {
     private final JScrollPane scrollColas = new JScrollPane(tablaColas);
     private final JPanel panelDetalleColas = new JPanel(new BorderLayout(0, 8));
 
-    // LOG DE EVENTOS DEL SISTEMA
+    // --- NUEVO: Componentes para visualizar los Buffers Globales ---
+    private final DefaultTableModel modeloBuffers = new DefaultTableModel(new Object[]{"Buffer", "Elementos", "Capacidad", "Semáforos (M, L, V)", "Procesos Bloqueados"}, 0) {
+        @Override public boolean isCellEditable(int row, int column) { return false; }
+    };
+    private final JTable tablaBuffers = new JTable(modeloBuffers);
+    private final JScrollPane scrollBuffers = new JScrollPane(tablaBuffers);
+    private final JPanel panelDetalleBuffers = new JPanel(new BorderLayout(0, 8));
+    // -------------------------------------------------------------
+
     private final JTextArea areaLog = new JTextArea();
     private final JScrollPane scrollLog = new JScrollPane(areaLog);
     private final JPanel panelLog = new JPanel(new BorderLayout(0, 8));
 
     public MonitorSimulacion(SimulationController controller, Runnable irAComputadores) {
-        super(new BorderLayout(0, 20));
+        super(new BorderLayout(0, 0));
         this.controller = controller;
         setBackground(FONDO);
-        setBorder(BorderFactory.createEmptyBorder(28, 28, 24, 28));
+        
+        JPanel contenedorPrincipal = new ScrollablePanel(new BorderLayout(0, 20));
+        contenedorPrincipal.setBackground(FONDO);
+        contenedorPrincipal.setBorder(BorderFactory.createEmptyBorder(28, 28, 24, 28));
         
         JPanel cabecera = new JPanel();
         cabecera.setLayout(new BoxLayout(cabecera, BoxLayout.Y_AXIS));
@@ -65,7 +75,6 @@ public final class MonitorSimulacion extends JPanel {
         cabecera.add(intervaloAplicado);
         cabecera.add(Box.createVerticalStrut(16));
         
-        // Configuración de la tabla de colas
         tablaColas.setFillsViewportHeight(true);
         tablaColas.getTableHeader().setReorderingAllowed(false);
         tablaColas.setRowHeight(24);
@@ -79,8 +88,24 @@ public final class MonitorSimulacion extends JPanel {
         panelDetalleColas.add(scrollColas, BorderLayout.CENTER);
         panelDetalleColas.setVisible(false);
         
+        // --- NUEVO: Configuración gráfica de la tabla de Buffers ---
+        tablaBuffers.setFillsViewportHeight(true);
+        tablaBuffers.getTableHeader().setReorderingAllowed(false);
+        tablaBuffers.setRowHeight(24);
+        scrollBuffers.setPreferredSize(new Dimension(Integer.MAX_VALUE, 120));
+        scrollBuffers.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
+        
+        panelDetalleBuffers.setOpaque(false);
+        panelDetalleBuffers.setAlignmentX(LEFT_ALIGNMENT);
+        JLabel tituloBuffers = texto("ESTADO DE LOS BUFFERS GLOBALES", 12, TINTA, true);
+        panelDetalleBuffers.add(tituloBuffers, BorderLayout.NORTH);
+        panelDetalleBuffers.add(scrollBuffers, BorderLayout.CENTER);
+        // -----------------------------------------------------------
+
         cabecera.add(panelDetalleColas);
-        add(cabecera, BorderLayout.NORTH);
+        cabecera.add(Box.createVerticalStrut(16)); // Espaciador
+        cabecera.add(panelDetalleBuffers); // Se añade debajo de las colas
+        contenedorPrincipal.add(cabecera, BorderLayout.NORTH);
         
         tarjetas.setOpaque(false);
         vacio.add(texto("Todavía no hay computadores", 20, TINTA, true));
@@ -94,10 +119,8 @@ public final class MonitorSimulacion extends JPanel {
         JPanel contenido = new JPanel(new BorderLayout());
         contenido.setOpaque(false);
         contenido.add(tarjetas, BorderLayout.NORTH);
-        JScrollPane scroll = new JScrollPane(contenido);
-        scroll.setBorder(BorderFactory.createEmptyBorder());
-        scroll.getViewport().setBackground(FONDO);
-        resumen.add(scroll, BorderLayout.CENTER);
+        
+        resumen.add(contenido, BorderLayout.CENTER);
         resumen.add(texto("CPU: estado actual · Utilización histórica y métricas: pendientes", 12, GRIS, false), BorderLayout.SOUTH);
         
         pestanas.setUI(new javax.swing.plaf.basic.BasicTabbedPaneUI() {
@@ -112,17 +135,15 @@ public final class MonitorSimulacion extends JPanel {
         pestanas.setForeground(TINTA);
         pestanas.addTab("Resumen", resumen);
         
-        add(pestanas, BorderLayout.CENTER);
+        contenedorPrincipal.add(pestanas, BorderLayout.CENTER);
         pestanas.addChangeListener(e -> actualizarDetalleColasGlobal());
         
-        // --- CONFIGURACIÓN DEL LOG DE EVENTOS ---
         areaLog.setEditable(false);
-        areaLog.setBackground(new Color(25, 25, 25)); // Fondo oscuro terminal
-        areaLog.setForeground(new Color(0, 200, 0));  // Texto verde terminal
+        areaLog.setBackground(new Color(25, 25, 25));
+        areaLog.setForeground(new Color(0, 200, 0));
         areaLog.setFont(new Font("Monospaced", Font.PLAIN, 12));
         areaLog.setMargin(new Insets(5, 5, 5, 5));
         
-        // Auto-scroll al añadir nuevo texto
         DefaultCaret caret = (DefaultCaret) areaLog.getCaret();
         caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
         
@@ -133,20 +154,30 @@ public final class MonitorSimulacion extends JPanel {
         panelLog.add(tituloLog, BorderLayout.NORTH);
         panelLog.add(scrollLog, BorderLayout.CENTER);
         
-        add(panelLog, BorderLayout.SOUTH);
+        contenedorPrincipal.add(panelLog, BorderLayout.SOUTH);
 
-        // --- CONEXIÓN AL CONTROLADOR (OBSERVER) ---
+        JScrollPane scrollGlobal = new JScrollPane(contenedorPrincipal);
+        scrollGlobal.setBorder(null);
+        scrollGlobal.getVerticalScrollBar().setUnitIncrement(16);
+        scrollGlobal.getViewport().setBackground(FONDO);
+        scrollGlobal.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        
+        add(scrollGlobal, BorderLayout.CENTER);
+
         this.controller.addGUIListener(() -> {
-            if (isShowing()) {
-                actualizarVista();
-            }
+            if (isShowing()) actualizarVista();
         });
     }
 
-    /**
-     * Método público para añadir un evento al log desde cualquier parte del simulador.
-     * @param mensaje El texto descriptivo del evento.
-     */
+    private static class ScrollablePanel extends JPanel implements Scrollable {
+        public ScrollablePanel(LayoutManager layout) { super(layout); }
+        @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        @Override public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) { return 16; }
+        @Override public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) { return Math.max(visibleRect.height / 2, 1); }
+        @Override public boolean getScrollableTracksViewportWidth() { return true; }
+        @Override public boolean getScrollableTracksViewportHeight() { return false; }
+    }
+
     public void agregarLog(String mensaje) {
         SwingUtilities.invokeLater(() -> {
             String timestamp = String.format("[Ciclo %d] ", controller.getCurrentCycle());
@@ -213,8 +244,41 @@ public final class MonitorSimulacion extends JPanel {
             reloj.setText("Reloj global · ciclo " + ciclo);
             estado.setText(marcha + "  ·  " + cantidad + " computadores");
             actualizarDetalleColasGlobal();
+            
+            // Llama a la actualización de los buffers globales
+            actualizarDetalleBuffersGlobal();
         }
     }
+
+    // --- NUEVO: Lógica para actualizar los valores en la tabla de buffers ---
+    private void actualizarDetalleBuffersGlobal() {
+        modeloBuffers.setRowCount(0);
+        
+        // AQUÍ DEBES CONECTAR CON TU CONTROLLER PARA OBTENER LOS BUFFERS
+        // Reemplaza este bloque de ejemplo con la llamada real a tus objetos Buffer/Semáforo
+        
+        /* EJEMPLO DE IMPLEMENTACIÓN:
+        MyLinkedList<Buffer> buffers = controller.getGlobalBuffers(); // Asume que tienes este método
+        for (int i = 0; i < buffers.size(); i++) {
+            Buffer b = buffers.get(i);
+            String nombre = "Buffer " + b.getId();
+            int elementos = b.getCurrentSize();
+            int capacidad = b.getCapacity();
+            
+            // Valores de semáforos: Mutex, Lleno (Full), Vacío (Empty)
+            String semaforos = String.format("M:%d, L:%d, V:%d", 
+                b.getMutex().getValue(), 
+                b.getFull().getValue(), 
+                b.getEmpty().getValue());
+                
+            // Procesos bloqueados esperando por este buffer (ej: Productor bloqueado por full o Consumidor por empty)
+            String bloqueados = b.getBlockedProcessesAsString(); // "P1, P3"
+            
+            modeloBuffers.addRow(new Object[]{nombre, elementos, capacidad, semaforos, bloqueados});
+        }
+        */
+    }
+    // ------------------------------------------------------------------------
     
     private void actualizarDetalleColasGlobal() {
         int seleccion = pestanas.getSelectedIndex();
@@ -285,12 +349,13 @@ public final class MonitorSimulacion extends JPanel {
             resumenes[i].add(Box.createVerticalStrut(14));
             resumenes[i].add(abrir);
             tarjetas.add(resumenes[i]);
+            
             JPanel contenedor = new JPanel(new BorderLayout());
             contenedor.setBackground(FONDO);
             contenedor.add(detalles[i], BorderLayout.NORTH);
-            JScrollPane scroll = new JScrollPane(contenedor);
-            scroll.setBorder(BorderFactory.createEmptyBorder());
-            pestanas.addTab(c.getName(), scroll);
+            
+            pestanas.addTab(c.getName(), contenedor);
+            
             if (ids[i] == seleccionado) pestanas.setSelectedIndex(indice);
         }
         tarjetas.revalidate(); tarjetas.repaint();

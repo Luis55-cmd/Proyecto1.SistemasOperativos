@@ -209,4 +209,25 @@ public class Buffer {
     public MyQueue<ProcessControlBlock> getWaitingLlenos() {
         return waitingLlenos;
     }
+    
+    public synchronized String getBlockedProcessesAsString() {
+        // Obtenemos la representación en texto de cada cola
+        String m = waitingMutex.toString();
+        String v = waitingVacios.toString();
+        String l = waitingLlenos.toString();
+        
+        // Limpiamos los corchetes vacíos si las colas están vacías (dependiendo de cómo sea tu MyQueue.toString())
+        if (m.equals("[]")) m = "";
+        if (v.equals("[]")) v = "";
+        if (l.equals("[]")) l = "";
+        
+        StringBuilder result = new StringBuilder();
+        
+        if (!m.isEmpty()) result.append("Mutex: ").append(m).append(" ");
+        if (!v.isEmpty()) result.append("Vacíos: ").append(v).append(" ");
+        if (!l.isEmpty()) result.append("Llenos: ").append(l);
+        
+        String finalResult = result.toString().trim();
+        return finalResult.isEmpty() ? "-" : finalResult;
+    }
 }

@@ -16,14 +16,19 @@ import com.avilaos.hardware.RAM;
 import com.avilaos.sync.Buffer;
 import com.avilaos.sync.ProducerConsumerDriver;
 
+import javax.swing.SwingUtilities;
+
 /**
  * Controlador y Fachada Central de la Simulación (Capa 3: Control y Simulación).
  * Coordina la simulación del clúster ÁvilaOS, orquesta el avance temporal
- * sincronizado con GlobalClock, y expone una API limpia y desacoplada para la GUI.
- * 
- * Requisitos: ARC-02, ARC-13, ARC-14, ARC-23, D-07, D-13, Issue #26.
+ * sincronizado con GlobalClock, e integra el registro/notificación de eventos (logs).
  */
 public class SimulationController implements IClockTickable {
+
+    /** Interfaz funcional propia para escuchar eventos de log sin depender de java.util.Consumer */
+    public interface ILogListener {
+        void onLogAdded(String message);
+    }
 
     private static volatile SimulationController instance;
 
@@ -31,6 +36,10 @@ public class SimulationController implements IClockTickable {
     private final MyLinkedList<Buffer> buffers;
     private final GlobalClock clock;
     private final ProducerConsumerDriver syncDriver;
+    
+    // Lista de observadores de la interfaz gráfica y de logs
+    private final MyLinkedList<Runnable> guiListeners;
+    private final MyLinkedList<ILogListener> logListeners;
 
     private int nextComputerId = 1;
     private int nextBufferId = 1;
@@ -38,6 +47,8 @@ public class SimulationController implements IClockTickable {
     private SimulationController() {
         this.computers = new MyLinkedList<>();
         this.buffers = new MyLinkedList<>();
+        this.guiListeners = new MyLinkedList<>();
+        this.logListeners = new MyLinkedList<>();
         this.clock = GlobalClock.getInstance();
         this.syncDriver = new ProducerConsumerDriver(2); // Latencia por defecto: 2 ciclos
         this.clock.addSubscriber(this);
@@ -55,12 +66,53 @@ public class SimulationController implements IClockTickable {
     }
 
     // =========================================================================
+    // CONEXIÓN CON LA INTERFAZ GRÁFICA Y LOGS (Patrón Observador)
+    // =========================================================================
+    
+    /** Registra un panel de la GUI para que se actualice cuando cambie la simulación. */
+    public void addGUIListener(Runnable listener) {
+        if (listener != null) {
+            this.guiListeners.append(listener);
+        }
+    }
+
+    /** Registra un escuchador de logs (por ejemplo, el panel de consola en la GUI). */
+    public void addLogListener(ILogListener listener) {
+        if (listener != null) {
+            this.logListeners.append(listener);
+        }
+    }
+
+    /** Emite un mensaje de evento al registro de logs y notifica a la GUI en el EDT. */
+    public void logEvent(String message) {
+        if (message == null || message.trim().isEmpty()) return;
+        
+        SwingUtilities.invokeLater(() -> {
+            for (int i = 0; i < logListeners.size(); i++) {
+                ILogListener listener = logListeners.get(i);
+                if (listener != null) {
+                    listener.onLogAdded(message);
+                }
+            }
+        });
+    }
+
+    /** Dispara la actualización en todos los paneles registrados de forma segura en Swing. */
+    private void notifyGUI() {
+        SwingUtilities.invokeLater(() -> {
+            for (int i = 0; i < guiListeners.size(); i++) {
+                Runnable listener = guiListeners.get(i);
+                if (listener != null) {
+                    listener.run();
+                }
+            }
+        });
+    }
+
+    // =========================================================================
     // MÉTODOS PARA BOTONES DE LA GUI (Gestión de Clúster, Procesos y Buffers)
     // =========================================================================
 
-    /**
-     * Crea un nuevo computador en el clúster con su propio Hardware y Kernel.
-     */
     public synchronized Computer createComputer(int ramSize, SchedulingPolicyType policy) {
         int id = nextComputerId++;
         RAM ram = new RAM(ramSize, 0, new int[ramSize]);
@@ -79,16 +131,12 @@ public class SimulationController implements IClockTickable {
 
         Computer comp = new Computer(id, cpu, ram, dma, kernel, policy != null ? policy : SchedulingPolicyType.FCFS);
         this.computers.append(comp);
+        
+        logEvent("Computador creado: " + comp.getName() + " (ID " + id + ") con política " + comp.getPolitica());
+        notifyGUI();
         return comp;
     }
 
-    /**
-     * Entradas: nombre, RAM positiva y política. Salida: computador registrado.
-     * Valida antes de crear; error IllegalArgumentException sin agregar computadores.
-     * Recorre computadores hasta encontrar duplicado o agotar la lista.
-     * Compara sin mayúsculas ni espacios externos; no consume ID ante duplicado.
-     * Delega construcción al método existente y asigna nombre. No inicia reloj.
-     */
     public synchronized Computer createComputer(String name, int ramSize, SchedulingPolicyType policy) {
         if (name == null || name.trim().isEmpty() || ramSize <= 0 || policy == null) {
             throw new IllegalArgumentException("Indica nombre, RAM positiva y política.");
@@ -101,25 +149,22 @@ public class SimulationController implements IClockTickable {
         }
         Computer computer = createComputer(ramSize, policy);
         computer.setName(name);
+        
+        notifyGUI();
         return computer;
     }
 
-    /**
-     * Crea y admite un proceso en el computador especificado.
-     */
     public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
                                                           int instructions, int memory, int priority, int deadline) {
         return createProcess(name, computerId, type, instructions, memory, priority, deadline, null, 1, 0);
     }
 
-    /**
-     * Crea y admite un proceso Productor o Consumidor con parámetros de sincronización y buffer objetivo.
-     */
     public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
                                                           int instructions, int memory, int priority, int deadline,
                                                           String targetBufferId, int cyclesPerOperation, int requiredElements) {
         Computer comp = getComputerById(computerId);
         if (comp == null) {
+            logEvent("Error: No se encontró el computador ID " + computerId + " para crear el proceso " + name);
             return null;
         }
 
@@ -130,30 +175,35 @@ public class SimulationController implements IClockTickable {
         );
 
         comp.getKernel().gestionCreateProcess(comp, pcb);
+        
+        logEvent("Proceso creado: " + name + " (ID " + pcb.getId() + ") asignado a " + comp.getName());
+        notifyGUI();
         return pcb;
     }
 
-    /**
-     * Crea y aloja un Búfer acotado en la memoria RAM del computador anfitrión.
-     */
-    public synchronized Buffer createBuffer(int hostComputerId, int storage) {
+    public synchronized Buffer createBuffer(int hostComputerId, int storage, int memory) {
         if (storage <= 0) {
             return null;
         }
         Computer host = getComputerById(hostComputerId);
         if (host == null || host.getKernel() == null) {
+            logEvent("Error: Computador anfitrión inválido para crear Buffer");
             return null;
         }
 
         int id = nextBufferId;
-        Buffer buffer = new Buffer(null, null, null, hostComputerId, storage, id, new MyQueue<>(), storage);
+        Buffer buffer = new Buffer(null, null, null, hostComputerId, storage, id, new MyQueue<>(), memory);
         boolean success = host.getKernel().placeBufferRAM(buffer, host);
         if (!success) {
+            logEvent("Error: Memoria RAM insuficiente en " + host.getName() + " para crear el Buffer " + id);
             return null;
         }
 
         nextBufferId++;
         this.buffers.append(buffer);
+        
+        logEvent("Buffer " + id + " creado en " + host.getName() + " con capacidad " + storage);
+        notifyGUI();
         return buffer;
     }
 
@@ -163,21 +213,27 @@ public class SimulationController implements IClockTickable {
 
     public void startSimulation() {
         this.clock.start();
+        logEvent("Simulación iniciada");
+        notifyGUI();
     }
 
     public void pauseSimulation() {
         this.clock.pause();
+        logEvent("Simulación pausada");
+        notifyGUI();
     }
 
     public void stepSimulation() {
         this.clock.step();
+        notifyGUI();
     }
 
     public void setCycleDurationMs(int ms) {
         this.clock.setCycleDurationMs(ms);
+        logEvent("Duración de ciclo ajustada a " + ms + " ms");
+        notifyGUI();
     }
 
-    /** Consulta el intervalo configurado, sin modificar reloj ni computadores. */
     public int getCycleDurationMs() {
         return this.clock.getCycleDurationMs();
     }
@@ -196,6 +252,7 @@ public class SimulationController implements IClockTickable {
 
     public void setNetworkLatency(int latencyCycles) {
         this.syncDriver.setLatencia(latencyCycles);
+        logEvent("Latencia de red actualizada a " + latencyCycles + " ciclos");
     }
 
     public int getNetworkLatency() {
@@ -203,17 +260,34 @@ public class SimulationController implements IClockTickable {
     }
 
     // =========================================================================
-    // AVANCE SINCRONIZADO POR CICLO (IClockTickable)
+    // AVANCE SINCRONIZADO POR CICLO (IClockTickable) Y REPORTE DE LOGS
     // =========================================================================
 
     @Override
     public synchronized void tick(int currentCycle) {
+        StringBuilder tickReport = new StringBuilder("Actividad CPUs -> ");
+        boolean hayActividad = false;
+
         for (int i = 0; i < this.computers.size(); i++) {
             Computer comp = this.computers.get(i);
             if (comp != null && comp.getKernel() != null) {
                 comp.getKernel().executeCycle(comp, currentCycle, this.syncDriver, this.buffers);
+                
+                // Construcción del reporte de log por cada CPU
+                ProcessControlBlock runningPcb = comp.getCpu().getPCB();
+                String estadoCpu = (runningPcb != null) ? runningPcb.getName() + " (PC:" + comp.getCpu().getPC() + ")" : "Inactiva";
+                
+                tickReport.append("[").append(comp.getName()).append(": ").append(estadoCpu).append("] ");
+                hayActividad = true;
             }
         }
+        
+        // Emite el log diario de actividad por tick si hay computadores
+        if (hayActividad) {
+            logEvent(tickReport.toString().trim());
+        }
+
+        notifyGUI(); // Actualiza visualmente la GUI
     }
 
     // =========================================================================
@@ -259,5 +333,8 @@ public class SimulationController implements IClockTickable {
         }
         this.nextComputerId = 1;
         this.nextBufferId = 1;
+        
+        logEvent("Simulador reiniciado a estado inicial");
+        notifyGUI();
     }
 }

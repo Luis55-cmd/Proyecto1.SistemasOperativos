@@ -19,7 +19,7 @@ public class Computer {
     private DMA dma;
     private ComputerKernel kernel;
     private SchedulingPolicyType politica;
-    private com.avilaos.memory.MemoryManager memoryManager;
+    private MemoryManager memoryManager;
 
     public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica) {
         this.id = id;

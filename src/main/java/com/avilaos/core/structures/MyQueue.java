@@ -1,5 +1,5 @@
 package com.avilaos.core.structures;
-
+import com.avilaos.core.model.ProcessControlBlock;
 
 /**
  * Cola genérica propia (FIFO - First In, First Out).
@@ -97,4 +97,21 @@ public class MyQueue<T> {
         }
     return false; 
 }
+    @Override
+    public String toString() {
+        if (isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        Node<T> current = pFirst;
+        while (current != null) {
+            if (current.data instanceof ProcessControlBlock pcb) {
+                sb.append(pcb.getName() != null ? pcb.getName() : "P").append("(").append(pcb.getId()).append(")");
+            } else {
+                sb.append(current.data.toString());
+            }
+            current = current.pNext;
+            if (current != null) sb.append(", ");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
 }

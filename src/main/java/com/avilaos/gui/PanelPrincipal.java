@@ -301,9 +301,10 @@ public class PanelPrincipal extends JPanel {
             spinnerTamanioMemoria.commitEdit();
             
             int capacidad = (Integer) spinnerAlmacenamiento.getValue();
+            int memoria = (Integer) spinnerTamanioMemoria.getValue();
             // Inyección real al Controlador usando el host y el almacenamiento deseado.
             // (Tu método createBuffer usa el `storage` para asignar la RAM).
-            Buffer nuevoBuffer = controller.createBuffer(compSeleccionado.id(), capacidad);
+            Buffer nuevoBuffer = controller.createBuffer(compSeleccionado.id(), capacidad, memoria);
             
             if (nuevoBuffer != null) {
                 resultadoBuffer.setText("Buffer ID " + nuevoBuffer.getId() + " creado exitosamente en Host " + compSeleccionado.id());

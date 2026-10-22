@@ -5,7 +5,9 @@ import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.SchedulingPolicyType;
 import com.avilaos.core.structures.MyLinkedList;
 import com.avilaos.simulation.SimulationController;
+import com.avilaos.sync.Buffer;
 import java.awt.*;
+import java.io.File;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.text.DefaultCaret;
@@ -37,14 +39,13 @@ public final class MonitorSimulacion extends JPanel {
     private final JScrollPane scrollColas = new JScrollPane(tablaColas);
     private final JPanel panelDetalleColas = new JPanel(new BorderLayout(0, 8));
 
-    // --- NUEVO: Componentes para visualizar los Buffers Globales ---
+    // --- Componentes para visualizar los Buffers Globales ---
     private final DefaultTableModel modeloBuffers = new DefaultTableModel(new Object[]{"Buffer", "Elementos", "Capacidad", "Semáforos (M, L, V)", "Procesos Bloqueados"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
     private final JTable tablaBuffers = new JTable(modeloBuffers);
     private final JScrollPane scrollBuffers = new JScrollPane(tablaBuffers);
     private final JPanel panelDetalleBuffers = new JPanel(new BorderLayout(0, 8));
-    // -------------------------------------------------------------
 
     private final JTextArea areaLog = new JTextArea();
     private final JScrollPane scrollLog = new JScrollPane(areaLog);
@@ -65,6 +66,8 @@ public final class MonitorSimulacion extends JPanel {
         cabecera.add(texto("SIMULACIÓN", 11, ACENTO, true));
         cabecera.add(Box.createVerticalStrut(8));
         cabecera.add(texto("Observa tu sistema", 28, TINTA, true));
+        cabecera.add(Box.createVerticalStrut(12));
+        cabecera.add(crearPanelPersistencia()); // Panel de Guardar/Cargar integrado
         cabecera.add(Box.createVerticalStrut(12));
         cabecera.add(reloj);
         cabecera.add(Box.createVerticalStrut(8));
@@ -88,7 +91,7 @@ public final class MonitorSimulacion extends JPanel {
         panelDetalleColas.add(scrollColas, BorderLayout.CENTER);
         panelDetalleColas.setVisible(false);
         
-        // --- NUEVO: Configuración gráfica de la tabla de Buffers ---
+        // --- Configuración gráfica de la tabla de Buffers ---
         tablaBuffers.setFillsViewportHeight(true);
         tablaBuffers.getTableHeader().setReorderingAllowed(false);
         tablaBuffers.setRowHeight(24);
@@ -100,11 +103,10 @@ public final class MonitorSimulacion extends JPanel {
         JLabel tituloBuffers = texto("ESTADO DE LOS BUFFERS GLOBALES", 12, TINTA, true);
         panelDetalleBuffers.add(tituloBuffers, BorderLayout.NORTH);
         panelDetalleBuffers.add(scrollBuffers, BorderLayout.CENTER);
-        // -----------------------------------------------------------
 
         cabecera.add(panelDetalleColas);
-        cabecera.add(Box.createVerticalStrut(16)); // Espaciador
-        cabecera.add(panelDetalleBuffers); // Se añade debajo de las colas
+        cabecera.add(Box.createVerticalStrut(16));
+        cabecera.add(panelDetalleBuffers);
         contenedorPrincipal.add(cabecera, BorderLayout.NORTH);
         
         tarjetas.setOpaque(false);
@@ -163,10 +165,184 @@ public final class MonitorSimulacion extends JPanel {
         scrollGlobal.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         
         add(scrollGlobal, BorderLayout.CENTER);
+        
+        this.controller.addLogListener(mensaje -> {
+            String timestamp = String.format("[Ciclo %d] ", controller.getCurrentCycle());
+            areaLog.append(timestamp + mensaje + "\n");
+        });
 
         this.controller.addGUIListener(() -> {
             if (isShowing()) actualizarVista();
         });
+    }
+    
+    private int extraerValorInt(String texto, String clave, int defecto) {
+    try {
+        String patron = "\"" + clave + "\":";
+        int idx = texto.indexOf(patron);
+        if (idx == -1) return defecto;
+        int start = idx + patron.length();
+        int end = texto.indexOf(",", start);
+        if (end == -1) end = texto.indexOf("}", start);
+        if (end == -1) end = texto.indexOf("]", start);
+        String val = texto.substring(start, end).replaceAll("[^0-9-]", "").trim();
+        return Integer.parseInt(val);
+    } catch (Exception e) {
+        return defecto;
+    }
+}
+
+private String extraerValorString(String texto, String clave, String defecto) {
+    try {
+        String patron = "\"" + clave + "\":";
+        int idx = texto.indexOf(patron);
+        if (idx == -1) return defecto;
+        int start = texto.indexOf("\"", idx + patron.length()) + 1;
+        int end = texto.indexOf("\"", start);
+        return texto.substring(start, end);
+    } catch (Exception e) {
+        return defecto;
+    }
+}
+
+    private JPanel crearPanelPersistencia() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        panel.setOpaque(false);
+        panel.setAlignmentX(LEFT_ALIGNMENT);
+
+        JButton btnGuardar = accion("Guardar Estado", false);
+        JButton btnCargar = accion("Cargar Estado", false);
+
+        btnGuardar.addActionListener(e -> {
+    JFileChooser chooser = new JFileChooser();
+    chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos JSON (*.json)", "json"));
+    
+    if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+        File archivo = chooser.getSelectedFile();
+        if (!archivo.getName().toLowerCase().endsWith(".json")) {
+            archivo = new File(archivo.getAbsolutePath() + ".json");
+        }
+
+        try (java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.FileWriter(archivo))) {
+            writer.println("{");
+            writer.println("  \"cycleDurationMs\": " + controller.getCycleDurationMs() + ",");
+            writer.println("  \"networkLatency\": " + controller.getNetworkLatency() + ",");
+            
+            // Exportar Computadores
+            writer.println("  \"computers\": [");
+            MyLinkedList<Computer> comps = controller.getComputers();
+            for (int i = 0; i < comps.size(); i++) {
+                Computer c = comps.get(i);
+                writer.println("    {");
+                writer.println("      \"name\": \"" + c.getName() + "\",");
+                writer.println("      \"ramSize\": " + c.getMemoryManager().getTotalMemory() + ",");
+                writer.println("      \"policy\": \"" + c.getPolitica() + "\",");
+                writer.print("    }" + (i < comps.size() - 1 ? "," : ""));
+                writer.println();
+            }
+            writer.println("  ],");
+
+            // Exportar Buffers (distinguiendo storage de sizeInMemory)
+            writer.println("  \"buffers\": [");
+            MyLinkedList<Buffer> bufs = controller.getBuffers();
+            for (int i = 0; i < bufs.size(); i++) {
+                Buffer b = bufs.get(i);
+                writer.println("    {");
+                writer.println("      \"id\": " + b.getId() + ",");
+                writer.println("      \"hostComputerId\": " + b.getIdComp() + ",");
+                writer.println("      \"storage\": " + b.getStorage() + ",");
+                writer.println("      \"sizeInMemory\": " + b.getSizeInMemory());
+                writer.print("    }" + (i < bufs.size() - 1 ? "," : ""));
+                writer.println();
+            }
+            writer.println("  ]");
+            writer.println("}");
+            
+            controller.logEvent("Configuración guardada exitosamente en JSON: " + archivo.getName());
+        } catch (java.io.IOException ex) {
+            controller.logEvent("Error al guardar archivo JSON: " + ex.getMessage());
+        }
+    }
+});
+          btnCargar.addActionListener(e -> {
+    JFileChooser chooser = new JFileChooser();
+    chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos JSON (*.json)", "json"));
+    
+    if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+        File archivo = chooser.getSelectedFile();
+        
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(archivo))) {
+            StringBuilder sb = new StringBuilder();
+            String linea;
+            while ((linea = reader.readLine()) != null) {
+                sb.append(linea.trim());
+            }
+
+            String json = sb.toString();
+            
+            // Reiniciar el estado actual del simulador antes de restaurar
+            controller.reset();
+
+            // Parámetros globales
+            int cycleDuration = extraerValorInt(json, "cycleDurationMs", 1000);
+            int networkLatency = extraerValorInt(json, "networkLatency", 2);
+            
+            controller.setCycleDurationMs(cycleDuration);
+            controller.setNetworkLatency(networkLatency);
+
+            // Reconstrucción de Computadores
+            int startComp = json.indexOf("\"computers\": [");
+            int endComp = json.indexOf("]", startComp);
+            if (startComp != -1 && endComp != -1) {
+                String bloqComps = json.substring(startComp, endComp);
+                String[] objetos = bloqComps.split("\\}\\s*,\\s*\\{");
+                
+                for (int i = 0; i < objetos.length; i++) {
+                    String obj = objetos[i];
+                    String name = extraerValorString(obj, "name", "Computador " + (i + 1));
+                    int ramSize = extraerValorInt(obj, "ramSize", 128);
+                    String polStr = extraerValorString(obj, "policy", "FCFS");
+                    int quantum = extraerValorInt(obj, "quantum", 2);
+
+                    SchedulingPolicyType pol = SchedulingPolicyType.FCFS;
+                    try {
+                        pol = SchedulingPolicyType.valueOf(polStr);
+                    } catch (Exception ex) { }
+
+                    Computer c = controller.createComputer(name, ramSize, pol);
+                    
+                }
+            }
+
+            // Reconstrucción de Buffers
+            int startBuf = json.indexOf("\"buffers\": [");
+            int endBuf = json.indexOf("]", startBuf);
+            if (startBuf != -1 && endBuf != -1) {
+                String bloqBufs = json.substring(startBuf, endBuf);
+                String[] objetos = bloqBufs.split("\\}\\s*,\\s*\\{");
+                
+                for (int i = 0; i < objetos.length; i++) {
+                    String obj = objetos[i];
+                    int hostId = extraerValorInt(obj, "hostComputerId", 1);
+                    int storage = extraerValorInt(obj, "storage", 10);
+                    int sizeInMemory = extraerValorInt(obj, "sizeInMemory", storage);
+
+                    if (controller.getComputerById(hostId) != null) {
+                        // Pasar storage y sizeInMemory al controlador
+                        controller.createBuffer(hostId, storage,sizeInMemory);
+                    }
+                }
+            }
+
+            controller.logEvent("Configuración JSON cargada exitosamente desde: " + archivo.getName());
+        } catch (Exception ex) {
+            controller.logEvent("Error al leer el archivo JSON: " + ex.getMessage());
+        }
+    }
+});
+panel.add(btnGuardar);
+        panel.add(btnCargar);
+        return panel;
     }
 
     private static class ScrollablePanel extends JPanel implements Scrollable {
@@ -234,51 +410,49 @@ public final class MonitorSimulacion extends JPanel {
             }
             if (cambio || cantidad == 0 && tarjetas.getComponentCount() == 0) reconstruirPestanas();
             
+            StringBuilder reporteTick = new StringBuilder("Estado CPUs -> ");
+
             for (int i = 0; i < cantidad; i++) {
                 Computer c = computadores.get(i);
                 resumenes[i].actualizar(c);
                 detalles[i].actualizar(c);
                 pestanas.setTitleAt(i + 1, c.getName());
+
+                ProcessControlBlock pcb = c.getCpu().getPCB();
+                String procesoActual = (pcb != null) ? pcb.getName() : "Inactivo";
+                reporteTick.append(c.getName()).append(": [").append(procesoActual).append("] | ");
             }
             
             reloj.setText("Reloj global · ciclo " + ciclo);
             estado.setText(marcha + "  ·  " + cantidad + " computadores");
             actualizarDetalleColasGlobal();
-            
-            // Llama a la actualización de los buffers globales
             actualizarDetalleBuffersGlobal();
+
+            if (controller.isRunning() && !controller.isPaused() && cantidad > 0) {
+                agregarLog(reporteTick.toString());
+            }
         }
     }
 
-    // --- NUEVO: Lógica para actualizar los valores en la tabla de buffers ---
     private void actualizarDetalleBuffersGlobal() {
         modeloBuffers.setRowCount(0);
-        
-        // AQUÍ DEBES CONECTAR CON TU CONTROLLER PARA OBTENER LOS BUFFERS
-        // Reemplaza este bloque de ejemplo con la llamada real a tus objetos Buffer/Semáforo
-        
-        /* EJEMPLO DE IMPLEMENTACIÓN:
-        MyLinkedList<Buffer> buffers = controller.getGlobalBuffers(); // Asume que tienes este método
+        MyLinkedList<Buffer> buffers = controller.getBuffers();
         for (int i = 0; i < buffers.size(); i++) {
             Buffer b = buffers.get(i);
             String nombre = "Buffer " + b.getId();
-            int elementos = b.getCurrentSize();
-            int capacidad = b.getCapacity();
+            int elementos = b.getStorage();
+            int capacidad = b.getSizeInMemory();
             
-            // Valores de semáforos: Mutex, Lleno (Full), Vacío (Empty)
             String semaforos = String.format("M:%d, L:%d, V:%d", 
-                b.getMutex().getValue(), 
-                b.getFull().getValue(), 
-                b.getEmpty().getValue());
+                b.getMutex().availablePermits(), 
+                b.getLlenos().availablePermits(), 
+                b.getVacios().availablePermits());
                 
-            // Procesos bloqueados esperando por este buffer (ej: Productor bloqueado por full o Consumidor por empty)
-            String bloqueados = b.getBlockedProcessesAsString(); // "P1, P3"
+            String bloqueados = b.getBlockedProcessesAsString();
             
             modeloBuffers.addRow(new Object[]{nombre, elementos, capacidad, semaforos, bloqueados});
         }
-        */
     }
-    // ------------------------------------------------------------------------
     
     private void actualizarDetalleColasGlobal() {
         int seleccion = pestanas.getSelectedIndex();

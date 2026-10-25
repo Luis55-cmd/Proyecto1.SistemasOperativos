@@ -237,6 +237,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
                 writer.println("      \"name\": \"" + c.getName() + "\",");
                 writer.println("      \"ramSize\": " + c.getMemoryManager().getTotalMemory() + ",");
                 writer.println("      \"policy\": \"" + c.getPolitica() + "\",");
+                writer.println("      \"quantum\": " + c.getQuantum());
                 writer.print("    }" + (i < comps.size() - 1 ? "," : ""));
                 writer.println();
             }
@@ -309,7 +310,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
                         pol = SchedulingPolicyType.valueOf(polStr);
                     } catch (Exception ex) { }
 
-                    Computer c = controller.createComputer(name, ramSize, pol);
+                    Computer c = controller.createComputer(name, ramSize, pol, quantum);
                     
                 }
             }
@@ -539,12 +540,15 @@ panel.add(btnGuardar);
         private final Computer computador;
         private final JLabel nombre = texto("", 20, TINTA, true);
         private final JComboBox<SchedulingPolicyType> comboPolitica = new JComboBox<>(SchedulingPolicyType.values());
+        private final JLabel labelQuantum = texto("Quantum: ", 13, GRIS, false);
+        private final JSpinner spinnerQuantum = new JSpinner(new SpinnerNumberModel(3, 1, 99, 1));
         private final JLabel cpu = texto("", 14, TINTA, true);
         private final JLabel proceso = texto("", 13, GRIS, false);
         private final JLabel registros = texto("", 13, GRIS, false);
         private final JLabel colas = texto("", 13, TINTA, false);
         private final JLabel memoria = texto("", 13, GRIS, false);
         private final boolean detalle;
+        private boolean actualizandoVista = false;
 
         VistaComputador(Computer c, boolean detalle) {
             this.computador = c;
@@ -565,9 +569,33 @@ panel.add(btnGuardar);
                 SchedulingPolicyType seleccion = (SchedulingPolicyType) comboPolitica.getSelectedItem();
                 if (seleccion != null && seleccion != computador.getPolitica()) {
                     computador.setPolitica(seleccion);
+                    boolean esRR = (seleccion == SchedulingPolicyType.ROUND_ROBIN);
+                    labelQuantum.setVisible(esRR);
+                    spinnerQuantum.setVisible(esRR);
+                    panelPolitica.revalidate();
+                    panelPolitica.repaint();
                 }
             });
             panelPolitica.add(comboPolitica);
+
+            spinnerQuantum.setValue(c.getQuantum());
+            spinnerQuantum.setPreferredSize(new Dimension(55, 26));
+            boolean esRRInicial = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN);
+            labelQuantum.setVisible(esRRInicial);
+            spinnerQuantum.setVisible(esRRInicial);
+
+            spinnerQuantum.addChangeListener(e -> {
+                if (!actualizandoVista) {
+                    int val = (Integer) spinnerQuantum.getValue();
+                    if (val != computador.getQuantum()) {
+                        computador.setQuantum(val);
+                    }
+                }
+            });
+
+            panelPolitica.add(Box.createHorizontalStrut(10));
+            panelPolitica.add(labelQuantum);
+            panelPolitica.add(spinnerQuantum);
 
             nombre.setAlignmentX(Component.LEFT_ALIGNMENT);
             cpu.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -586,27 +614,39 @@ panel.add(btnGuardar);
         }
 
         void actualizar(Computer c) {
-            nombre.setText(c.getName() + " · ID " + c.getId());
-            
-            if (comboPolitica.getSelectedItem() != c.getPolitica()) {
-                comboPolitica.setSelectedItem(c.getPolitica());
-            }
+            actualizandoVista = true;
+            try {
+                nombre.setText(c.getName() + " · ID " + c.getId());
+                
+                if (comboPolitica.getSelectedItem() != c.getPolitica()) {
+                    comboPolitica.setSelectedItem(c.getPolitica());
+                }
 
-            ProcessControlBlock p = c.getCpu().getPCB();
-            cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
-            proceso.setText(p == null ? "Sin proceso" : "Proceso: " + p.getName() + " · ID " + p.getId());
-            
-            if (detalle) registros.setText(p == null ? "PC: —  ·  Prioridad: —  ·  Deadline: —"
-                    : "PC: " + c.getCpu().getPC() + "  ·  Prioridad: " + p.getPriority()
-                    + "  ·  Deadline restante: " + p.getRemainingDeadline());
-            
-            int total = c.getMemoryManager().getTotalMemory();
-            int usada = c.getMemoryManager().getUsedMemory();
-            memoria.setText("RAM " + usada + " / " + total);
-            
-            var kernel = c.getKernel();
-            colas.setText("Nuevos: " + kernel.getNewQueue().size() + "  ·  Listos: " + kernel.getReadyQueue().size()
-                    + "  ·  Bloqueados: " + kernel.getBlockedQueue().size() + "  ·  Terminados: " + kernel.getEndedQueue().size());
+                boolean esRR = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN);
+                labelQuantum.setVisible(esRR);
+                spinnerQuantum.setVisible(esRR);
+                if ((Integer) spinnerQuantum.getValue() != c.getQuantum()) {
+                    spinnerQuantum.setValue(c.getQuantum());
+                }
+
+                ProcessControlBlock p = c.getCpu().getPCB();
+                cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
+                proceso.setText(p == null ? "Sin proceso" : "Proceso: " + p.getName() + " · ID " + p.getId());
+                
+                if (detalle) registros.setText(p == null ? "PC: —  ·  Prioridad: —  ·  Deadline: —"
+                        : "PC: " + c.getCpu().getPC() + "  ·  Prioridad: " + p.getPriority()
+                        + "  ·  Deadline restante: " + p.getRemainingDeadline());
+                
+                int total = c.getMemoryManager().getTotalMemory();
+                int usada = c.getMemoryManager().getUsedMemory();
+                memoria.setText("RAM " + usada + " / " + total);
+                
+                var kernel = c.getKernel();
+                colas.setText("Nuevos: " + kernel.getNewQueue().size() + "  ·  Listos: " + kernel.getReadyQueue().size()
+                        + "  ·  Bloqueados: " + kernel.getBlockedQueue().size() + "  ·  Terminados: " + kernel.getEndedQueue().size());
+            } finally {
+                actualizandoVista = false;
+            }
         }
     }
 }

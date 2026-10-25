@@ -56,7 +56,7 @@ Las fuentes se indican por grupo: **RF §n** significa la sección numerada de �
 - [ ] **ARC-19** Representar el modo del procesador —usuario o sistema operativo— mediante un enum.
 - [ ] **ARC-20** Definir el comportamiento de las políticas de planificación mediante una interfaz.
 - [ ] **ARC-21** Permitir agregar una política implementando/extendiéndose sobre esa abstracción, sin modificar el código del planificador.
-- [ ] **ARC-22** Definir una interfaz común para los componentes que reaccionan al reloj, como CPU y DMA cuando corresponda.
+- [x] **ARC-22** Definir una interfaz común para los componentes que reaccionan al reloj, como CPU y DMA cuando corresponda.
 - [ ] **ARC-23** Mantener la lógica del sistema fuera de las ventanas: la GUI observa y permite operar el simulador.
 
 ### PRO — Creación y modelo de procesos
@@ -264,11 +264,11 @@ Las fuentes se indican por grupo: **RF §n** significa la sección numerada de �
 - [ ] **CFG-06** Permitir introducir desde la GUI la política inicial de cada computador para la configuración persistente.
 - [ ] **CFG-07** Permitir introducir desde la GUI el quantum para la configuración persistente.
 - [ ] **CFG-08** Permitir introducir desde la GUI la latencia de red en ciclos para la configuración persistente.
-- [ ] **CFG-09** Permitir introducir desde la GUI la carga inicial de procesos con todos sus atributos.
-- [ ] **CFG-10** Permitir introducir desde la GUI la carga inicial de buffers con su capacidad.
-- [ ] **CFG-11** Permitir introducir desde la GUI el anfitrión de cada buffer de la carga inicial.
-- [ ] **CFG-12** Escribir la configuración indicada en un archivo CSV o JSON; basta uno de esos formatos.
-- [ ] **CFG-13** Recuperar y utilizar la configuración guardada en simulaciones futuras.
+- [x] **CFG-09** Permitir introducir desde la GUI la carga inicial de procesos con todos sus atributos.
+- [x] **CFG-10** Permitir introducir desde la GUI la carga inicial de buffers con su capacidad.
+- [x] **CFG-11** Permitir introducir desde la GUI el anfitrión de cada buffer de la carga inicial.
+- [x] **CFG-12** Escribir la configuración indicada en un archivo CSV o JSON; basta uno de esos formatos.
+- [x] **CFG-13** Recuperar y utilizar la configuración guardada en simulaciones futuras.
 
 ### MET — Métricas de rendimiento
 

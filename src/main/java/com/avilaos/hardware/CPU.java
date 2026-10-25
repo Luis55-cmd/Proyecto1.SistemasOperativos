@@ -3,14 +3,18 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package com.avilaos.hardware;
+import com.avilaos.core.kernel.IClockTickable;
 import com.avilaos.core.model.ExecutionMode;
 import com.avilaos.core.model.ProcessControlBlock;
 
 /**
+ * Representación del procesador (CPU) y sus registros de hardware.
+ * Implementa IClockTickable para reaccionar al ciclo de reloj actualizando sus registros.
+ * Requisito: ARC-22.
  *
  * @author rafr
  */
-public class CPU {
+public class CPU implements IClockTickable {
     private int PC;
     private int MAR;
     private int IR;
@@ -24,6 +28,15 @@ public class CPU {
         this.PCB = null;
         this.mode = ExecutionMode.USER;
         
+    }
+
+    @Override
+    public void tick(int currentCycle) {
+        if (this.PCB != null) {
+            this.PC = this.PCB.getProgramCounter();
+            this.MAR = this.PCB.getMemoryAddressRegister();
+            this.mode = this.PCB.getMode();
+        }
     }
 
     public ExecutionMode getMode() {

@@ -1,7 +1,10 @@
 package com.avilaos.gui;
 
 import com.avilaos.hardware.Computer;
+import com.avilaos.core.model.BlockReason;
 import com.avilaos.core.model.ProcessControlBlock;
+import com.avilaos.core.model.ProcessState;
+import com.avilaos.core.model.ProcessType;
 import com.avilaos.core.model.SchedulingPolicyType;
 import com.avilaos.core.structures.MyLinkedList;
 import com.avilaos.simulation.SimulationController;
@@ -225,6 +228,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
 
         try (java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.FileWriter(archivo))) {
             writer.println("{");
+            writer.println("  \"currentCycle\": " + controller.getCurrentCycle() + ",");
             writer.println("  \"cycleDurationMs\": " + controller.getCycleDurationMs() + ",");
             writer.println("  \"networkLatency\": " + controller.getNetworkLatency() + ",");
             
@@ -256,6 +260,38 @@ private String extraerValorString(String texto, String clave, String defecto) {
                 writer.print("    }" + (i < bufs.size() - 1 ? "," : ""));
                 writer.println();
             }
+            writer.println("  ],");
+
+            // Exportar Procesos (con todos sus atributos y estado actual)
+            writer.println("  \"processes\": [");
+            MyLinkedList<ProcessControlBlock> procs = controller.getAllProcesses();
+            for (int i = 0; i < procs.size(); i++) {
+                ProcessControlBlock p = procs.get(i);
+                writer.println("    {");
+                writer.println("      \"id\": " + p.getId() + ",");
+                writer.println("      \"name\": \"" + p.getName() + "\",");
+                writer.println("      \"computerId\": " + p.getComputerId() + ",");
+                writer.println("      \"type\": \"" + p.getType() + "\",");
+                writer.println("      \"totalInstructions\": " + p.getTotalInstructions() + ",");
+                writer.println("      \"remainingTime\": " + p.getRemainingTime() + ",");
+                writer.println("      \"assignedMemory\": " + p.getAssignedMemory() + ",");
+                writer.println("      \"priority\": " + p.getPriority() + ",");
+                writer.println("      \"deadline\": " + p.getDeadline() + ",");
+                writer.println("      \"remainingDeadline\": " + p.getRemainingDeadline() + ",");
+                writer.println("      \"state\": \"" + p.getState() + "\",");
+                writer.println("      \"blockReason\": \"" + p.getBlockReason() + "\",");
+                writer.println("      \"programCounter\": " + p.getProgramCounter() + ",");
+                writer.println("      \"memoryAddressRegister\": " + p.getMemoryAddressRegister() + ",");
+                writer.println("      \"ioInterval\": " + p.getIoInterval() + ",");
+                writer.println("      \"ioDuration\": " + p.getIoDuration() + ",");
+                writer.println("      \"ioCycleCountdown\": " + p.getIoCycleCountdown() + ",");
+                writer.println("      \"targetBufferId\": " + (p.getTargetBufferId() != null ? "\"" + p.getTargetBufferId() + "\"" : "null") + ",");
+                writer.println("      \"cyclesPerOperation\": " + p.getCyclesPerOperation() + ",");
+                writer.println("      \"requiredElements\": " + p.getRequiredElements() + ",");
+                writer.println("      \"processedElements\": " + p.getProcessedElements());
+                writer.print("    }" + (i < procs.size() - 1 ? "," : ""));
+                writer.println();
+            }
             writer.println("  ]");
             writer.println("}");
             
@@ -285,11 +321,13 @@ private String extraerValorString(String texto, String clave, String defecto) {
             controller.reset();
 
             // Parámetros globales
+            int currentCycle = extraerValorInt(json, "currentCycle", 0);
             int cycleDuration = extraerValorInt(json, "cycleDurationMs", 1000);
             int networkLatency = extraerValorInt(json, "networkLatency", 2);
             
             controller.setCycleDurationMs(cycleDuration);
             controller.setNetworkLatency(networkLatency);
+            controller.setCurrentCycle(currentCycle);
 
             // Reconstrucción de Computadores
             int startComp = json.indexOf("\"computers\": [");
@@ -335,6 +373,75 @@ private String extraerValorString(String texto, String clave, String defecto) {
                 }
             }
 
+            // Reconstrucción de Procesos (con todos sus atributos y estado)
+            int startProc = json.indexOf("\"processes\": [");
+            int endProc = json.indexOf("]", startProc);
+            if (startProc != -1 && endProc != -1) {
+                String bloqProcs = json.substring(startProc, endProc);
+                String[] objetos = bloqProcs.split("\\}\\s*,\\s*\\{");
+                int maxId = 0;
+                for (int i = 0; i < objetos.length; i++) {
+                    String obj = objetos[i];
+                    if (obj.trim().isEmpty() || !obj.contains("\"name\"")) continue;
+
+                    int pId = extraerValorInt(obj, "id", i + 1);
+                    maxId = Math.max(maxId, pId);
+                    String name = extraerValorString(obj, "name", "Proceso-" + pId);
+                    int computerId = extraerValorInt(obj, "computerId", 1);
+                    String typeStr = extraerValorString(obj, "type", "CPU_BOUND");
+                    int totalInstructions = extraerValorInt(obj, "totalInstructions", 10);
+                    int remainingTime = extraerValorInt(obj, "remainingTime", totalInstructions);
+                    int assignedMemory = extraerValorInt(obj, "assignedMemory", 10);
+                    int priority = extraerValorInt(obj, "priority", 1);
+                    int deadline = extraerValorInt(obj, "deadline", 100);
+                    int remainingDeadline = extraerValorInt(obj, "remainingDeadline", deadline);
+                    String stateStr = extraerValorString(obj, "state", "LISTO");
+                    String blockReasonStr = extraerValorString(obj, "blockReason", "NONE");
+                    int pc = extraerValorInt(obj, "programCounter", 0);
+                    int mar = extraerValorInt(obj, "memoryAddressRegister", 0);
+                    int ioInterval = extraerValorInt(obj, "ioInterval", 0);
+                    int ioDuration = extraerValorInt(obj, "ioDuration", 0);
+                    int ioCycleCountdown = extraerValorInt(obj, "ioCycleCountdown", ioInterval);
+                    String targetBufId = extraerValorString(obj, "targetBufferId", null);
+                    if ("null".equalsIgnoreCase(targetBufId)) targetBufId = null;
+                    int cyclesPerOp = extraerValorInt(obj, "cyclesPerOperation", 1);
+                    int reqElem = extraerValorInt(obj, "requiredElements", 0);
+                    int procElem = extraerValorInt(obj, "processedElements", 0);
+
+                    ProcessType pType = ProcessType.CPU_BOUND;
+                    try { pType = ProcessType.valueOf(typeStr); } catch (Exception ex) {}
+
+                    ProcessState pState = ProcessState.LISTO;
+                    try { pState = ProcessState.valueOf(stateStr); } catch (Exception ex) {}
+
+                    BlockReason bReason = BlockReason.NONE;
+                    try { bReason = BlockReason.valueOf(blockReasonStr); } catch (Exception ex) {}
+
+                    ProcessControlBlock pcb = new ProcessControlBlock(
+                        name, computerId, pType, totalInstructions, assignedMemory, priority, deadline
+                    );
+                    pcb.setId(pId);
+                    pcb.setRemainingTime(remainingTime);
+                    pcb.setRemainingDeadline(remainingDeadline);
+                    pcb.setState(pState);
+                    pcb.setBlockReason(bReason);
+                    pcb.setProgramCounter(pc);
+                    pcb.setMemoryAddressRegister(mar);
+                    pcb.setIoInterval(ioInterval);
+                    pcb.setIoDuration(ioDuration);
+                    pcb.setIoCycleCountdown(ioCycleCountdown);
+                    pcb.setTargetBufferId(targetBufId);
+                    pcb.setCyclesPerOperation(cyclesPerOp);
+                    pcb.setRequiredElements(reqElem);
+                    pcb.setProcessedElements(procElem);
+
+                    controller.restoreProcess(pcb);
+                }
+                if (maxId > 0) {
+                    ProcessControlBlock.resetIdGenerator(maxId + 1);
+                }
+            }
+
             controller.logEvent("Configuración JSON cargada exitosamente desde: " + archivo.getName());
         } catch (Exception ex) {
             controller.logEvent("Error al leer el archivo JSON: " + ex.getMessage());
@@ -368,9 +475,27 @@ panel.add(btnGuardar);
         controles.setAlignmentX(LEFT_ALIGNMENT);
         intervalo.setSelectedItem(controller.getCycleDurationMs());
         intervalo.setPreferredSize(new Dimension(90, 36));
-        iniciar.addActionListener(e -> controller.startSimulation());
+        iniciar.addActionListener(e -> {
+            if (controller.getComputers().isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                        "Debes crear al menos un computador antes de iniciar la simulación.",
+                        "Sin computadores",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            controller.startSimulation();
+        });
         pausar.addActionListener(e -> { if (controller.isRunning() && !controller.isPaused()) controller.pauseSimulation(); });
-        paso.addActionListener(e -> { if (!controller.isRunning() || controller.isPaused()) controller.stepSimulation(); });
+        paso.addActionListener(e -> {
+            if (controller.getComputers().isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                        "Debes crear al menos un computador para avanzar paso a paso.",
+                        "Sin computadores",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (!controller.isRunning() || controller.isPaused()) controller.stepSimulation();
+        });
         aplicar.addActionListener(e -> {
             Integer ms = (Integer) intervalo.getSelectedItem();
             if (ms != null) { controller.setCycleDurationMs(ms); actualizarControlesReloj(); }

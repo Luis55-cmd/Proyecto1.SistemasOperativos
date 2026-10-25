@@ -134,6 +134,47 @@ public class ComputerKernel {
         }
     }
 
+    /**
+     * Restaura un proceso desde un snapshot/JSON, ubicándolo directamente en su estado y cola
+     * correspondiente y reservando memoria si se encuentra activo en RAM.
+     */
+    public void restoreProcess(Computer com, ProcessControlBlock p) {
+        if (com == null || p == null) return;
+        this.processList.append(p);
+
+        if (p.getState() == ProcessState.EJECUTANDO
+                || p.getState() == ProcessState.LISTO
+                || p.getState() == ProcessState.BLOQUEADO) {
+            if (com.getMemoryManager() != null) {
+                com.getMemoryManager().allocateMemory(p.getAssignedMemory());
+            }
+        }
+
+        switch (p.getState()) {
+            case EJECUTANDO:
+                if (com.getCpu() != null) {
+                    com.getCpu().setPCB(p);
+                    com.getCpu().setPC(p.getProgramCounter());
+                    com.getCpu().setMAR(p.getMemoryAddressRegister());
+                    com.getCpu().setMode(p.getMode() != null ? p.getMode() : ExecutionMode.USER);
+                }
+                break;
+            case LISTO:
+                this.readyQueue.enqueue(p);
+                break;
+            case BLOQUEADO:
+                this.blockedQueue.enqueue(p);
+                break;
+            case SALIENTE:
+                this.endedQueue.enqueue(p);
+                break;
+            case NUEVO:
+            default:
+                this.newQueue.enqueue(p);
+                break;
+        }
+    }
+
     public boolean isMemoryTotallyUsed(Computer com, int memoria) {
         if (com == null || com.getMemoryManager() == null) {
             return false;
@@ -482,11 +523,9 @@ public class ComputerKernel {
                 }
             }
 
-            // Sincronizar registros hardware — solo el kernel toca la CPU
+            // Sincronizar registros hardware mediante la interfaz común de reloj (ARC-22)
             if (cpu.getPCB() != null) {
-                cpu.setPC(currentRunning.getProgramCounter());
-                cpu.setMAR(currentRunning.getMemoryAddressRegister());
-                cpu.setMode(currentRunning.getMode());
+                cpu.tick(currentCycle);
             }
 
             // Verificar terminación natural
@@ -494,6 +533,11 @@ public class ComputerKernel {
                     || currentRunning.getRemainingTime() <= 0) {
                 terminateProcess(comp, currentRunning);
             }
+        }
+
+        // 6. Avanzar componentes de hardware auxiliares que reaccionan al reloj (ARC-22)
+        if (comp.getDma() != null) {
+            comp.getDma().tick(currentCycle);
         }
     }
 

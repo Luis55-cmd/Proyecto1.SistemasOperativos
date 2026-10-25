@@ -32,6 +32,12 @@ Cualquier violación a las reglas marcadas con **[NOTA 0]** causará la reprobac
    - Una vez que un proceso es asignado a un computador (manual o automáticamente), permanece en ese computador hasta su terminación.
 9. **PROHIBIDO INVENTAR COMPILADORES O MEMORIA VIRTUAL EN ESTE PROYECTO:**
    - En el Proyecto 1 **no hay disco ni memoria virtual ni paginación**. El control de memoria RAM es contable (memoria usada vs. memoria libre). Todas las instrucciones se ejecutan de manera lineal (PC y MAR incrementan en 1 por ciclo).
+10. **REGLA CANÓNICA DE MEMORIA RAM (1 INSTRUCCIÓN == 1 POSICIÓN RAM):**
+   - En ÁvilaOS la memoria RAM requerida por un proceso **no es un campo manual que el usuario invente en la GUI**, sino que se **deriva directamente del conjunto de instrucciones** del programa (conforme al ítem 104 del enunciado y acuerdo unificado del equipo).
+   - Cada instrucción ocupa 1 posición en la RAM física simulada ($1 \text{ inst} = 1 \text{ posición RAM}$).
+   - **Procesos CPU-bound / I/O-bound:** $\text{RAM} = \sum \text{duraciones de bloques de instrucciones}$.
+   - **Procesos Productor / Consumidor:** $\text{RAM} = 5 \times \text{requiredElements}$ (5 instrucciones de sincronización y manipulación de buffer del SO por cada elemento).
+   - **Admisión y Saturación:** Si un proceso pide más memoria que la RAM física total del computador, se rechaza de inmediato en creación. Si cabe en la RAM total pero supera la RAM libre actual, se admite en estado `NEW` (Cola de Nuevos) y espera a que los procesos en ejecución terminen y liberen RAM.
 
 ---
 
@@ -109,6 +115,7 @@ Con base en el enunciado y la planificación del equipo, se establecen las sigui
 | **D-12 (Admisión RAM)** | **Cola de nuevos funciona FIFO estricto; si el primer proceso cabe en RAM, se admite; si no cabe, se puede evaluar si el siguiente cabe o esperar a liberación.** | Política definida: Evaluar en orden de cola de nuevos al terminar cualquier proceso. |
 | **D-13 (Aborto Deadline)** | **Si un proceso vence su deadline mientras retenía un semáforo (ej. mutex), el SO debe forzar la liberación del mutex para no congelar a los demás.** | El núcleo invoca un `cleanupResources(pcb)` que evita deadlocks causados por procesos abortados. |
 | **D-14 (UMLs del Informe)**| **1 Diagrama de Clases general + 1 Diagrama de Secuencia (Interacción Productor-Consumidor Remoto con Semáforos y Red).** | Cumple con creces los 2 diagramas requeridos. |
+| **D-15 (Memoria Derivada: 1 Inst = 1 RAM)** | **La memoria RAM del proceso no es un campo manual en la GUI, sino un atributo derivado del conjunto de instrucciones.** | Conforme al ítem 104 del enunciado y acuerdo del equipo: $1 \text{ instrucción} = 1 \text{ posición RAM}$. Para CPU/IO-bound: $\text{RAM} = \sum \text{duraciones de bloques}$. Para Prod/Cons: $\text{RAM} = 5 \times \text{requiredElements}$ (instrucciones de SO para sincronización). Si $\text{RAM} > \text{RAM total}$, se rechaza en creación; si $\text{RAM} > \text{RAM libre}$, espera en cola `NEW` hasta que otros procesos liberen memoria. |
 
 ---
 
@@ -146,7 +153,7 @@ Esta matriz integra y audita cada uno de los puntos exigidos en el enunciado ofi
 - [ ] **PRO-02:** Creación dinámica de procesos durante la simulación en tiempo real.
 - [ ] **PRO-03:** Parámetro: Nombre del proceso.
 - [ ] **PRO-04:** Parámetro: Cantidad total de instrucciones/ciclos.
-- [ ] **PRO-05:** Parámetro: Memoria requerida en RAM.
+- [ ] **PRO-05:** Memoria requerida en RAM (derivada automáticamente del conjunto de instrucciones: $1 \text{ instrucción} = 1 \text{ posición RAM}$, sin input manual en GUI).
 - [ ] **PRO-06:** Parámetro: Prioridad del proceso (valor entero).
 - [ ] **PRO-07:** Selector del tipo de proceso (`ProcessType`).
 - [ ] **PRO-08:** Soporte de procesos CPU-bound (consumo continuo de ciclos de CPU).
@@ -232,7 +239,7 @@ Esta matriz integra y audita cada uno de los puntos exigidos en el enunciado ofi
 ### Bloque CFG & MET: Configuración, Persistencia y Métricas
 - [ ] **CFG-01 / CFG-02:** Control de velocidad de simulación (slider o spinner de ms por ciclo) y quantum.
 - [ ] **CFG-03 a CFG-11:** Formulario de parámetros iniciales: N° computadores, RAMs, políticas iniciales, latencia de red, procesos y buffers.
-- [ ] **CFG-12 / CFG-13:** Exportar e Importar configuración inicial en formato JSON (o CSV) para guardar y recargar simulaciones.
+- [x] **CFG-12 / CFG-13:** Exportar e Importar configuración inicial en formato JSON (o CSV) para guardar y recargar simulaciones.
 - [ ] **MET-01 a MET-10:** Cálculo y visualización de Throughput, CPU Utilization, Tiempo de respuesta promedio, Tasa de cumplimiento de deadlines y Equidad (por máquina y clúster).
 - [ ] **MET-11 a MET-13:** Métricas del productor-consumidor: total producidos/consumidos por buffer y tiempo promedio en bloqueo.
 
@@ -253,3 +260,5 @@ Cualquier IA que participe en el desarrollo de este código debe cumplir taxativ
 3. **Pureza de capas:** No colocar lógica de semáforos, procesos o planificadores dentro de componentes de Swing (como `ActionListener` o `JFrame`).
 4. **Tratamiento de Deadlines:** Garantizar que todo proceso cuyo `remainingDeadline <= 0` sea interceptado y finalizado limpiamente liberando memoria y candados.
 5. **Comentarios de Código:** Mantener comentarios breves, limpios y significativos en español o inglés neutro.
+6. **Componentes que reaccionan al reloj (ARC-22):** `CPU` y `DMA` deben implementar obligatoriamente `IClockTickable` (`tick(int currentCycle)`). El ciclo del computador delega la actualización de registros o transferencias a través de esta interfaz común.
+

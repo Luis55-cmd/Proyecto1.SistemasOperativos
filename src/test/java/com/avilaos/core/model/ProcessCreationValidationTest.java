@@ -15,6 +15,8 @@ public class ProcessCreationValidationTest {
         testRejectMemoryExceedingTotalRam();
         testRejectInvalidParameters();
         testRejectInvalidProducerConsumer();
+        testSenderInitiatedLoadBalancing();
+        testRejectStartWithZeroComputers();
         System.out.println(">>> TODAS LAS PRUEBAS DE ProcessCreationValidationTest PASARON EXITOSAMENTE. <<<");
     }
 
@@ -153,5 +155,55 @@ public class ProcessCreationValidationTest {
         }
 
         System.out.println("[PASS] testRejectInvalidProducerConsumer");
+    }
+
+    private static void testSenderInitiatedLoadBalancing() {
+        SimulationController controller = SimulationController.getInstance();
+        controller.reset();
+
+        Computer compA = controller.createComputer("HostA", 128, SchedulingPolicyType.FCFS);
+        Computer compB = controller.createComputer("HostB", 128, SchedulingPolicyType.FCFS);
+
+        // Llenar CompA con 3 procesos para alcanzar el umbral de carga T=3
+        controller.createProcess("A1", compA.getId(), ProcessType.CPU_BOUND, 10, 10, 1, 50);
+        controller.createProcess("A2", compA.getId(), ProcessType.CPU_BOUND, 10, 10, 1, 50);
+        controller.createProcess("A3", compA.getId(), ProcessType.CPU_BOUND, 10, 10, 1, 50);
+
+        // Crear proceso con asignación automática (-1)
+        ProcessControlBlock autoProcess = controller.createProcess(
+                "AutoProc", -1, ProcessType.CPU_BOUND, 10, 15, 1, 50
+        );
+
+        if (autoProcess == null) {
+            throw new AssertionError("El proceso automático debe crearse exitosamente");
+        }
+
+        // Debe asignarse a HostB porque HostA está en el umbral T=3 y HostB tiene carga 0 < 3
+        if (autoProcess.getComputerId() != compB.getId()) {
+            throw new AssertionError("Sender-Initiated debio transferir a HostB (ID " + compB.getId() 
+                    + ") pero fue a ID " + autoProcess.getComputerId());
+        }
+
+        System.out.println("[PASS] testSenderInitiatedLoadBalancing");
+    }
+
+    private static void testRejectStartWithZeroComputers() {
+        SimulationController controller = SimulationController.getInstance();
+        controller.reset();
+
+        // Con 0 computadores, startSimulation() no debe arrancar el reloj
+        controller.startSimulation();
+        if (controller.isRunning()) {
+            throw new AssertionError("La simulación no debe arrancar con 0 computadores");
+        }
+
+        // Tampoco debe avanzar ciclos con stepSimulation()
+        int cicloInicial = controller.getCurrentCycle();
+        controller.stepSimulation();
+        if (controller.getCurrentCycle() != cicloInicial) {
+            throw new AssertionError("El ciclo no debe avanzar en stepSimulation con 0 computadores");
+        }
+
+        System.out.println("[PASS] testRejectStartWithZeroComputers");
     }
 }

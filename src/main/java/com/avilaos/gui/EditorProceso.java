@@ -22,7 +22,6 @@ public class EditorProceso extends JPanel {
     // --- COMPONENTES DEL ENCABEZADO Y CREACIÓN ---
     private final JTextField campoNombre = new JTextField();
     private final JSpinner spinnerPrioridad = new JSpinner(new SpinnerNumberModel(1, 1, 10, 1));
-    private final JSpinner spinnerMemoria = new JSpinner(new SpinnerNumberModel(20, 1, 10000, 1));
     private final JSpinner spinnerDeadline = new JSpinner(new SpinnerNumberModel(20, 1, 100000, 1));
     
     // Selector de tipo de proceso
@@ -43,12 +42,14 @@ public class EditorProceso extends JPanel {
     // ---------------------------------------------
 
     private record DestinoComputador(int id, String nombre) {
-        @Override public String toString() { return nombre + " · ID " + id; }
+        @Override public String toString() { 
+            return id == -1 ? nombre : nombre + " · ID " + id; 
+        }
     }
     
     private final JComboBox<String> operacion = new JComboBox<>(new String[]{"CPU", "E/S"});
     private final JSpinner ticks = new JSpinner(new SpinnerNumberModel(5, 1, 10000, 1));
-    private final JLabel resumen = texto("0 bloques  ·  CPU: 0 ticks  ·  E/S: 0 ticks", 13, TINTA, true);
+    private final JLabel resumen = texto("0 bloques  ·  CPU: 0 ticks  ·  E/S: 0 ticks  ·  Memoria RAM: 0", 13, TINTA, true);
     private final JLabel mensaje = texto("Agrega el primer bloque para comenzar.", 12, GRIS, false);
     private final ModeloBloques modelo = new ModeloBloques();
     private final JTable tabla = new JTable(modelo);
@@ -67,12 +68,12 @@ public class EditorProceso extends JPanel {
         camposFila1.add(campo("Tipo de Proceso", comboTipoProceso));
         camposFila1.add(campo("Prioridad (1-10)", spinnerPrioridad));
         
-        // Fila 2: Recursos (Memoria) y Límite temporal (Deadline)
+        // Fila 2: Límite temporal (Deadline). La memoria RAM se deriva del conjunto de instrucciones (1 inst = 1 RAM)
         JPanel camposFila2 = new JPanel(new GridLayout(1, 4, 16, 0));
         camposFila2.setOpaque(false);
-        camposFila2.add(campo("Memoria requerida (RAM)", spinnerMemoria));
         camposFila2.add(campo("Deadline (ticks)", spinnerDeadline));
-        camposFila2.add(new JLabel("")); // Espaciador para alineación uniforme
+        camposFila2.add(new JLabel("")); // Espaciadores para alineación uniforme
+        camposFila2.add(new JLabel(""));
         camposFila2.add(new JLabel(""));
 
         // Fila 3: Datos de Sincronización (Oculto por defecto)
@@ -188,6 +189,13 @@ public class EditorProceso extends JPanel {
         // 1. Actualizar Computadores
         Integer compSeleccionado = getComputadorDestinoId();
         destino.removeAllItems();
+        if (ctrl.getComputers().size() > 0) {
+            DestinoComputador opcionAuto = new DestinoComputador(-1, "⚡ Automático (Sender-Initiated)");
+            destino.addItem(opcionAuto);
+            if (compSeleccionado != null && compSeleccionado == -1) {
+                destino.setSelectedItem(opcionAuto);
+            }
+        }
         for (int i = 0; i < ctrl.getComputers().size(); i++) {
             Computer c = ctrl.getComputers().get(i);
             DestinoComputador opcion = new DestinoComputador(c.getId(), c.getName());
@@ -257,8 +265,8 @@ public class EditorProceso extends JPanel {
         for (int i = 0; i < cantidad; i++) {
             if ("CPU".equals(operaciones[i])) cpu += duraciones[i]; else es += duraciones[i];
         }
-        resumen.setText(cantidad + " bloques  ·  CPU: " + cpu + " ticks  ·  E/S: " + es + " ticks");
         int total = cpu + es;
+        resumen.setText(cantidad + " bloques  ·  CPU: " + cpu + " ticks  ·  E/S: " + es + " ticks  ·  Memoria RAM: " + total + " (1 inst = 1 RAM)");
         if (total > 0) {
             spinnerDeadline.setValue(total * 2);
         }
@@ -271,14 +279,12 @@ public class EditorProceso extends JPanel {
 
         try { 
             spinnerPrioridad.commitEdit(); 
-            spinnerMemoria.commitEdit();
             spinnerDeadline.commitEdit();
             spinnerCiclosOperacion.commitEdit();
             spinnerElementos.commitEdit();
         } catch (Exception ignored) {}
         
         int prioridad = (Integer) spinnerPrioridad.getValue();
-        int memoria = (Integer) spinnerMemoria.getValue();
         int deadline = (Integer) spinnerDeadline.getValue();
 
         if (nombre.isEmpty()) {
@@ -290,44 +296,13 @@ public class EditorProceso extends JPanel {
             return;
         }
 
-        SimulationController controller = SimulationController.getInstance();
-        Computer compDestino = controller.getComputerById(idComputador);
-        if (compDestino == null) {
-            mensaje.setText("Error: El computador destino seleccionado no existe.");
-            return;
-        }
-
-        if (cantidad == 0) {
-            mensaje.setText("Error: Añade al menos un bloque de ejecución.");
-            return;
-        }
-
+        // 1 instrucción == 1 posición RAM (Atributo derivado del conjunto de instrucciones)
         int totalTicks = 0;
         for (int i = 0; i < cantidad; i++) {
             totalTicks += duraciones[i];
         }
 
-        if (totalTicks <= 0) {
-            mensaje.setText("Error: Las instrucciones totales deben ser mayores a 0.");
-            return;
-        }
-
-        if (memoria <= 0) {
-            mensaje.setText("Error: La memoria requerida debe ser mayor a 0.");
-            return;
-        }
-
-        int ramTotal = compDestino.getMemoryManager().getTotalMemory();
-        if (memoria > ramTotal) {
-            mensaje.setText("Error: La memoria solicitada (" + memoria + ") supera la RAM total (" + ramTotal + ") de " + compDestino.getName() + ".");
-            return;
-        }
-
-        if (deadline <= 0) {
-            mensaje.setText("Error: El deadline debe ser mayor a 0.");
-            return;
-        }
-        
+        int memoria;
         if (tipo == ProcessType.PRODUCER || tipo == ProcessType.CONSUMER) {
             if (comboBufferId.getItemCount() == 0 || comboBufferId.getSelectedItem() == null) {
                 mensaje.setText("Error: No puedes crear este proceso. Debes crear un Buffer primero.");
@@ -343,6 +318,43 @@ public class EditorProceso extends JPanel {
                 mensaje.setText("Error: La cantidad de elementos requeridos debe ser mayor a 0.");
                 return;
             }
+            // 5 instrucciones de sincronización del SO por cada elemento (wait, wait, op, signal, signal)
+            memoria = reqElem * 5;
+            if (totalTicks == 0) totalTicks = memoria;
+        } else {
+            if (cantidad == 0 || totalTicks <= 0) {
+                mensaje.setText("Error: Añade al menos un bloque de instrucciones.");
+                return;
+            }
+            memoria = totalTicks;
+        }
+
+        SimulationController controller = SimulationController.getInstance();
+        Computer compDestino;
+        if (idComputador == -1) {
+            compDestino = controller.selectSenderInitiatedComputer(memoria);
+            if (compDestino == null) {
+                mensaje.setText("Error: Ningún computador tiene suficiente RAM total (" + memoria + ") para alojar este proceso.");
+                return;
+            }
+            idComputador = compDestino.getId();
+        } else {
+            compDestino = controller.getComputerById(idComputador);
+            if (compDestino == null) {
+                mensaje.setText("Error: El computador destino seleccionado no existe.");
+                return;
+            }
+        }
+
+        int ramTotal = compDestino.getMemoryManager().getTotalMemory();
+        if (memoria > ramTotal) {
+            mensaje.setText("Error: El programa (" + memoria + " instrucciones/RAM) supera la RAM total (" + ramTotal + ") de " + compDestino.getName() + ".");
+            return;
+        }
+
+        if (deadline <= 0) {
+            mensaje.setText("Error: El deadline debe ser mayor a 0.");
+            return;
         }
 
         ProcessControlBlock nuevoPCB;

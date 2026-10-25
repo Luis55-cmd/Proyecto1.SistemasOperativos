@@ -197,10 +197,20 @@ public class SimulationController implements IClockTickable {
             return null;
         }
 
-        Computer comp = getComputerById(computerId);
-        if (comp == null) {
-            logEvent("Error: No se encontró el computador ID " + computerId + " para crear el proceso " + name);
-            return null;
+        Computer comp;
+        if (computerId == -1) {
+            comp = selectSenderInitiatedComputer(memory);
+            if (comp == null) {
+                logEvent("Error: Ningún computador tiene RAM suficiente (" + memory + ") para " + name);
+                return null;
+            }
+            computerId = comp.getId();
+        } else {
+            comp = getComputerById(computerId);
+            if (comp == null) {
+                logEvent("Error: No se encontró el computador ID " + computerId + " para crear el proceso " + name);
+                return null;
+            }
         }
 
         if (instructions <= 0) {
@@ -257,6 +267,60 @@ public class SimulationController implements IClockTickable {
         return pcb;
     }
 
+    /**
+     * Algoritmo de distribución de carga iniciado por el emisor (Sender-Initiated Load Balancing).
+     * Selecciona automáticamente el computador de destino para un proceso entrante:
+     * 1. Descarta computadores cuya RAM total no pueda albergar la memoria del proceso.
+     * 2. Evalúa la carga activa de cada nodo (CPU + Listos + Bloqueados) contra el umbral T (3).
+     *    Si encuentra un nodo con carga < T, lo selecciona de inmediato (iniciativa del emisor).
+     * 3. Si todos los nodos superan el umbral T, selecciona el nodo con menor carga activa (contingencia).
+     *
+     * @param requiredMemory Memoria solicitada por el proceso.
+     * @return El computador seleccionado, o null si ninguno tiene capacidad de RAM suficiente.
+     */
+    public synchronized Computer selectSenderInitiatedComputer(int requiredMemory) {
+        if (this.computers.isEmpty()) {
+            return null;
+        }
+
+        final int THRESHOLD_LOAD = 3;
+        Computer bestCandidate = null;
+        int minLoad = Integer.MAX_VALUE;
+
+        for (int i = 0; i < this.computers.size(); i++) {
+            Computer c = this.computers.get(i);
+            if (c == null) continue;
+
+            // Filtro de viabilidad física de memoria
+            if (c.getMemoryManager() != null && requiredMemory > c.getMemoryManager().getTotalMemory()) {
+                continue;
+            }
+
+            int running = (c.getCpu() != null && c.getCpu().getPCB() != null) ? 1 : 0;
+            int ready = (c.getKernel() != null && c.getKernel().getReadyQueue() != null) ? c.getKernel().getReadyQueue().size() : 0;
+            int blocked = (c.getKernel() != null && c.getKernel().getBlockedQueue() != null) ? c.getKernel().getBlockedQueue().size() : 0;
+            int load = running + ready + blocked;
+
+            // Iniciativa del emisor: primer nodo receptor que esté por debajo del umbral de carga
+            if (load < THRESHOLD_LOAD) {
+                logEvent("[Sender-Initiated] Asignando proceso a " + c.getName() 
+                        + " (Carga: " + load + " < Umbral T=" + THRESHOLD_LOAD + ")");
+                return c;
+            }
+
+            if (load < minLoad) {
+                minLoad = load;
+                bestCandidate = c;
+            }
+        }
+
+        if (bestCandidate != null) {
+            logEvent("[Sender-Initiated] Todos los nodos superaron umbral T=" + THRESHOLD_LOAD 
+                    + ". Asignando a " + bestCandidate.getName() + " por menor carga (" + minLoad + ")");
+        }
+        return bestCandidate;
+    }
+
     public synchronized Buffer createBuffer(int hostComputerId, int storage) {
         return createBuffer(hostComputerId, storage, storage);
     }
@@ -292,6 +356,10 @@ public class SimulationController implements IClockTickable {
     // =========================================================================
 
     public void startSimulation() {
+        if (this.computers.isEmpty()) {
+            logEvent("No se puede iniciar la simulación: No hay computadores creados.");
+            return;
+        }
         this.clock.start();
         logEvent("Simulación iniciada");
         notifyGUI();
@@ -304,6 +372,10 @@ public class SimulationController implements IClockTickable {
     }
 
     public void stepSimulation() {
+        if (this.computers.isEmpty()) {
+            logEvent("No se puede avanzar el ciclo: No hay computadores creados.");
+            return;
+        }
         this.clock.step();
         notifyGUI();
     }
@@ -320,6 +392,10 @@ public class SimulationController implements IClockTickable {
 
     public int getCurrentCycle() {
         return this.clock.getCycleCounter();
+    }
+
+    public void setCurrentCycle(int cycle) {
+        this.clock.setCycleCounter(cycle);
     }
 
     public boolean isRunning() {
@@ -400,6 +476,31 @@ public class SimulationController implements IClockTickable {
             }
         }
         return null;
+    }
+
+    public MyLinkedList<ProcessControlBlock> getAllProcesses() {
+        MyLinkedList<ProcessControlBlock> all = new MyLinkedList<>();
+        for (int i = 0; i < this.computers.size(); i++) {
+            Computer comp = this.computers.get(i);
+            if (comp != null && comp.getKernel() != null) {
+                MyLinkedList<ProcessControlBlock> list = comp.getKernel().getProcessList();
+                if (list != null) {
+                    for (int j = 0; j < list.size(); j++) {
+                        all.append(list.get(j));
+                    }
+                }
+            }
+        }
+        return all;
+    }
+
+    public synchronized void restoreProcess(ProcessControlBlock pcb) {
+        if (pcb == null) return;
+        Computer comp = getComputerById(pcb.getComputerId());
+        if (comp != null && comp.getKernel() != null) {
+            comp.getKernel().restoreProcess(comp, pcb);
+            notifyGUI();
+        }
     }
 
     public synchronized void reset() {

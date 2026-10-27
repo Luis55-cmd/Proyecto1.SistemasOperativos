@@ -46,7 +46,7 @@ public class PanelPrincipal extends JPanel {
     // NOTA: El campo ID numérico se deshabilita/elimina visualmente porque el Controller lo autogenera.
     private final JComboBox<OpcionComputador> comboComputadorBuffer = new JComboBox<>();
     private final JSpinner spinnerAlmacenamiento = new JSpinner(new SpinnerNumberModel(10, 1, 1000, 1));
-    private final JSpinner spinnerTamanioMemoria = new JSpinner(new SpinnerNumberModel(20, 1, 1024, 1));
+    private final JTextField memoriaBuffer = new JTextField("10");
     private final JLabel resultadoBuffer = texto("Ningún buffer creado en esta sesión.", 12, GRIS, false);
     private final DefaultTableModel buffersVisibles = new DefaultTableModel(
             new String[]{"ID Buffer", "ID Comp", "Capacidad (Items)", "Tamaño en RAM"}, 0) {
@@ -265,8 +265,14 @@ public class PanelPrincipal extends JPanel {
         fila2.setAlignmentX(LEFT_ALIGNMENT);
         fila2.setMaximumSize(new Dimension(500, 62));
         fila2.add(campo("Capacidad (Elementos)", spinnerAlmacenamiento));
-        // El tamaño en memoria podría calcularse, pero lo conservamos si lo quieres enviar
-        fila2.add(campo("Tamaño en RAM", spinnerTamanioMemoria));
+        memoriaBuffer.setEditable(false);
+        memoriaBuffer.setName("ramBuffer");
+        spinnerAlmacenamiento.setName("capacidadBuffer");
+        ((javax.swing.text.DefaultFormatter) ((JSpinner.DefaultEditor) spinnerAlmacenamiento.getEditor())
+                .getTextField().getFormatter()).setCommitsOnValidEdit(true);
+        spinnerAlmacenamiento.addChangeListener(e ->
+                memoriaBuffer.setText(spinnerAlmacenamiento.getValue().toString()));
+        fila2.add(campo("Tamaño en RAM", memoriaBuffer));
         tarjeta.add(fila2);
         tarjeta.add(Box.createVerticalStrut(22));
         
@@ -316,13 +322,9 @@ public class PanelPrincipal extends JPanel {
             }
             
             spinnerAlmacenamiento.commitEdit();
-            spinnerTamanioMemoria.commitEdit();
             
             int capacidad = (Integer) spinnerAlmacenamiento.getValue();
-            int memoria = (Integer) spinnerTamanioMemoria.getValue();
-            // Inyección real al Controlador usando el host y el almacenamiento deseado.
-            // (Tu método createBuffer usa el `storage` para asignar la RAM).
-            Buffer nuevoBuffer = controller.createBuffer(compSeleccionado.id(), capacidad, memoria);
+            Buffer nuevoBuffer = controller.createBuffer(compSeleccionado.id(), capacidad);
             
             if (nuevoBuffer != null) {
                 resultadoBuffer.setText("Buffer ID " + nuevoBuffer.getId() + " creado exitosamente en Host " + compSeleccionado.id());

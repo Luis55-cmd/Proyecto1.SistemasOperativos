@@ -325,6 +325,7 @@ public class SimulationController implements IClockTickable {
         return createBuffer(hostComputerId, storage, storage);
     }
 
+    /** Compatibilidad con cargas anteriores: la RAM se deriva de capacidad, no del campo legacy memory. */
     public synchronized Buffer createBuffer(int hostComputerId, int storage, int memory) {
         if (storage <= 0) {
             return null;
@@ -336,7 +337,7 @@ public class SimulationController implements IClockTickable {
         }
 
         int id = nextBufferId;
-        Buffer buffer = new Buffer(null, null, null, hostComputerId, storage, id, new MyQueue<>(), memory);
+        Buffer buffer = new Buffer(null, null, null, hostComputerId, storage, id, new MyQueue<>(), storage);
         boolean success = host.getKernel().placeBufferRAM(buffer, host);
         if (!success) {
             logEvent("Error: Memoria RAM insuficiente en " + host.getName() + " para crear el Buffer " + id);

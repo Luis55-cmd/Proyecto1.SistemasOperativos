@@ -21,7 +21,7 @@ public class EscenariosJsonRunner {
             c.addLogListener(message -> { if (log != null) log.println("[LOG ciclo " + c.getCurrentCycle() + "] " + message); });
         });
         String[] nombres = {"01-cpu-fcfs-rr", "02-admision-ram", "03-entrada-salida",
-                "04-productor-consumidor-remoto", "05-prioridad-primer-despacho"};
+                "04-productor-consumidor-remoto", "05-prioridad-primer-despacho", "06-prioridad-apropiacion"};
         try (var resumen = new PrintWriter(Files.newBufferedWriter(salida.resolve("resultado.txt")))) {
             for (String nombre : nombres) {
                 if (args.length > 2 && !nombre.startsWith(args[2])) continue;
@@ -65,7 +65,7 @@ public class EscenariosJsonRunner {
                         var b = c.getBuffers().get(0);
                         ok &= bloqueo[0] && red[0] && b.getProduced() == 3 && b.getComsumed() == 3 && b.getDatos().isEmpty();
                     }
-                    if (nombre.startsWith("05")) ok &= "Alta".equals(primero[0]);
+                    if (nombre.startsWith("05") || nombre.startsWith("06")) ok &= "Alta".equals(primero[0]);
                     resultado[0] = (ok ? "PASS " : "FAIL ") + nombre + " | fin=" + fin + " RAM=" + ram
                             + " bloqueo=" + bloqueo[0] + " red=" + red[0] + " primerCPU=" + primero[0];
                     if (!monitor.guardarEstado(salida.resolve(nombre + "-final.json").toFile())) throw new AssertionError("GUARDADO");

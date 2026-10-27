@@ -10,9 +10,11 @@ No son checkpoints completos de ejecuciones interrumpidas.
 | 02-admision-ram.json | RAM128; proceso80 y proceso64 en NUEVO | El segundo entra al liberar el primero; RAM final0 |
 | 03-entrada-salida.json | IO cada2 CPU, espera3 ticks, otro listo y otra CPU independiente | Se observa bloqueo y los tres completan |
 | 04-productor-consumidor-remoto.json | Buffer2 en Host; consumidor local y productor remoto, latencia2; tres elementos cada uno | Se observan bloqueos/red; producidos3, consumidos3; RAM final del Host2 |
-| 05-prioridad-primer-despacho.json | Baja1 insertado antes que Alta10 | **FALLO conocido:** primer tick ejecuta Baja. Ambos eventualmente terminan |
+| 05-prioridad-primer-despacho.json | Baja1 insertado antes que Alta10 | Corregido: Alta ejecuta primero y Baja continúa después |
 
-Los PASS son comprobaciones de los criterios listados, no certificación de toda la política ni de la semántica completa de instrucciones. El escenario05 reproduce un fallo; no es una prueba verde validada.
+| 06-prioridad-apropiacion.json | Media ejecutando PC2, Baja delante de Alta en Listos | Alta desaloja; Media retoma PC3; Baja al final |
+
+Los PASS son comprobaciones de los criterios listados, no certificación de toda la política ni de la semántica completa de instrucciones. El escenario05 reproducía el defecto y ahora pasa; scripts/verificar-prioridades.sh detecta su reintroducción y la desactivación del desalojo.
 
 ## Ejecutar sin crear nada a mano
 
@@ -29,7 +31,7 @@ La prueba visual mínima útil es cargar el escenario04 y confirmar que interfaz
 Para repetir automáticamente:
 JAVA_HOME=<JDK25> MVN=<ruta-mvn> bash scripts/ejecutar-escenarios.sh
 Se generan resultado.txt, un .log por escenario y un JSON final por escenario.
-El resultado05 seguirá indicando FAIL hasta corregir el primer despacho.
+Los seis escenarios deben indicar PASS.
 
 ## Evidencia automática
 
@@ -54,6 +56,6 @@ No se simula un clic con ratón: se invoca la misma función de producción que 
 ## Archivos y funciones
 
 - MonitorSimulacion.cargarEstado(File) y guardarEstado(File): mismas rutas para botones y runner. Devuelven éxito/fallo. La carga modifica toda la sesión; el guardado escribe archivo.
-- EscenariosJsonRunner.main: carga cinco archivos y ejecuta80 ticks por caso; termina tras la lista finita y escribe resultado.
+- EscenariosJsonRunner.main: carga seis archivos y ejecuta80 ticks por caso; termina tras la lista finita y escribe resultado.
 - EscenariosJsonRunner.snapshot: observa estado, no ejecuta ni muta procesos.
 - scripts/ejecutar-escenarios.sh: compila y lanza el runner con las dependencias de Maven.

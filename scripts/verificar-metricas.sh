@@ -66,6 +66,8 @@ mutacion eje gui/PanelMetricas.java 'addOrUpdate((double) cicloActual, utilizaci
 mutacion duplicados gui/PanelMetricas.java 'new XYSeries(actuales[i].getName(), true, false)' 'new XYSeries(actuales[i].getName(), true, true)' 'GRAFICO:' "$METRICAS"
 mutacion historia gui/PanelMetricas.java 'if (nodos[j] == actuales[i])' 'if (false)' 'HISTORIA:' "$METRICAS"
 mutacion menu gui/PanelPrincipal.java 'boton.addActionListener(e -> mostrarPanel(destino));' 'boton.addActionListener(e -> mostrarPanel(destino == Destino.METRICAS ? Destino.MENU : destino));' 'MENU:' "$MONITOR"
+"$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" com.avilaos.memory.BufferMemoryTest > "$OUT/buffer-base.txt"
+mutacion buffer_ram core/kernel/ComputerKernel.java 'int cantidad = buffer.getSizeInMemory();' 'int cantidad = buffer.getStorage();' 'RAM: reserva tamaño declarado' com.avilaos.memory.BufferMemoryTest
 # Repetir originales tras las mutaciones: también deben pasar.
 "$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" "$CLASS" | tee "$OUT/restaurado.txt"
 printf 'Evidencia: %s\n' "$OUT"

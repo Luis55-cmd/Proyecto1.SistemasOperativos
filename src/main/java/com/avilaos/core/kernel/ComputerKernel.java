@@ -382,7 +382,7 @@ public class ComputerKernel {
         if (buffer == null || com == null) {
             return false;
         }
-        int cantidad = buffer.getStorage();
+        int cantidad = buffer.getSizeInMemory();
         if (cantidad <= 0) {
             return false;
         }

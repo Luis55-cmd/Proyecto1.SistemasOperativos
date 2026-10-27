@@ -486,17 +486,22 @@ public class ProcessControlBlock {
     }
 
     @Override
-    public String toString() {
-        return "PCB{" +
-                "id=" + id +
-                ", name='" + name + '\'' +
-                ", pc=" + computerId +
-                ", state=" + state +
-                ", type=" + type +
-                ", remTime=" + remainingTime +
-                ", remDeadline=" + remainingDeadline +
-                ", PC=" + programCounter +
-                ", MAR=" + memoryAddressRegister +
-                '}';
+public String toString() {
+    String textoNombre = name;
+    if (blockReason != null && blockReason != BlockReason.NONE) {
+        textoNombre += " [" + blockReason + "]";
     }
+
+    return "PCB{" +
+            "id=" + id +
+            ", name='" + textoNombre + '\'' +
+            ", pc=" + computerId +
+            ", state=" + state +
+            ", type=" + type +
+            ", remTime=" + remainingTime +
+            ", remDeadline=" + remainingDeadline +
+            ", PC=" + programCounter +
+            ", MAR=" + memoryAddressRegister +
+            '}';
+}
 }

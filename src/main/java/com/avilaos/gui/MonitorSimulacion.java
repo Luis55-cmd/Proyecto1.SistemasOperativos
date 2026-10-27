@@ -27,7 +27,7 @@ public final class MonitorSimulacion extends JPanel {
     private int[] ids = new int[0];
     private VistaComputador[] resumenes = new VistaComputador[0];
     private VistaComputador[] detalles = new VistaComputador[0];
-    
+    private PanelMetricas panelMetricas;
     private final JButton iniciar = accion("Iniciar", true);
     private final JButton pausar = accion("Pausar", false);
     private final JButton paso = accion("+1 tick", false);
@@ -177,6 +177,8 @@ public final class MonitorSimulacion extends JPanel {
         this.controller.addGUIListener(() -> {
             if (isShowing()) actualizarVista();
         });
+        this.panelMetricas = new PanelMetricas(controller);
+        pestanas.addTab("Métricas", panelMetricas);
     }
     
     private int extraerValorInt(String texto, String clave, int defecto) {
@@ -475,31 +477,36 @@ panel.add(btnGuardar);
         controles.setAlignmentX(LEFT_ALIGNMENT);
         intervalo.setSelectedItem(controller.getCycleDurationMs());
         intervalo.setPreferredSize(new Dimension(90, 36));
+        
         iniciar.addActionListener(e -> {
-            if (controller.getComputers().isEmpty()) {
+            if (controller.getComputers().size() < 2) {
                 JOptionPane.showMessageDialog(this,
-                        "Debes crear al menos un computador antes de iniciar la simulación.",
-                        "Sin computadores",
+                        "Debes crear al menos dos computadores antes de iniciar la simulación.",
+                        "Computadores insuficientes",
                         JOptionPane.WARNING_MESSAGE);
                 return;
             }
             controller.startSimulation();
         });
+        
         pausar.addActionListener(e -> { if (controller.isRunning() && !controller.isPaused()) controller.pauseSimulation(); });
+        
         paso.addActionListener(e -> {
-            if (controller.getComputers().isEmpty()) {
+            if (controller.getComputers().size() < 2) {
                 JOptionPane.showMessageDialog(this,
-                        "Debes crear al menos un computador para avanzar paso a paso.",
-                        "Sin computadores",
+                        "Debes crear al menos dos computadores para avanzar paso a paso.",
+                        "Computadores insuficientes",
                         JOptionPane.WARNING_MESSAGE);
                 return;
             }
             if (!controller.isRunning() || controller.isPaused()) controller.stepSimulation();
         });
+        
         aplicar.addActionListener(e -> {
             Integer ms = (Integer) intervalo.getSelectedItem();
             if (ms != null) { controller.setCycleDurationMs(ms); actualizarControlesReloj(); }
         });
+        
         intervalo.addActionListener(e -> actualizarControlesReloj());
         controles.add(iniciar); controles.add(pausar); controles.add(paso);
         controles.add(texto("Intervalo (ms)", 12, GRIS, false));
@@ -545,7 +552,9 @@ panel.add(btnGuardar);
                 pestanas.setTitleAt(i + 1, c.getName());
 
                 ProcessControlBlock pcb = c.getCpu().getPCB();
-                String procesoActual = (pcb != null) ? pcb.getName() : "Inactivo";
+                // Llama al toString() completo para mostrar todos los registros y tiempos
+                String procesoActual = (pcb != null) ? pcb.toString() : "Inactivo";
+                
                 reporteTick.append(c.getName()).append(": [").append(procesoActual).append("] | ");
             }
             
@@ -556,6 +565,9 @@ panel.add(btnGuardar);
 
             if (controller.isRunning() && !controller.isPaused() && cantidad > 0) {
                 agregarLog(reporteTick.toString());
+            }
+            if (panelMetricas != null) {
+                panelMetricas.actualizarMetricas();
             }
         }
     }
@@ -581,51 +593,64 @@ panel.add(btnGuardar);
     }
     
     private void actualizarDetalleColasGlobal() {
-        int seleccion = pestanas.getSelectedIndex();
-        MyLinkedList<Computer> computadores = controller.getComputers();
-        int cantidad = computadores.size();
-        
-        if (cantidad == 0) {
-            panelDetalleColas.setVisible(false);
-            return;
-        }
-        
-        panelDetalleColas.setVisible(true);
-        int compIndex = seleccion > 0 ? seleccion - 1 : 0;
-        
-        if (compIndex < cantidad) {
-            Computer c = computadores.get(compIndex);
-            var kernel = c.getKernel();
-            
-            String[] nuevos = extraerElementos(kernel.getNewQueue().toString());
-            String[] listos = extraerElementos(kernel.getReadyQueue().toString());
-            String[] bloqueados = extraerElementos(kernel.getBlockedQueue().toString());
-            String[] terminados = extraerElementos(kernel.getEndedQueue().toString());
-            
-            int maxFilas = Math.max(Math.max(nuevos.length, listos.length), Math.max(bloqueados.length, terminados.length));
-            
-            modeloColas.setRowCount(0);
-            for (int i = 0; i < maxFilas; i++) {
-                String n = (i < nuevos.length) ? nuevos[i] : "";
-                String l = (i < listos.length) ? listos[i] : "";
-                String b = (i < bloqueados.length) ? bloqueados[i] : "";
-                String t = (i < terminados.length) ? terminados[i] : "";
-                
-                modeloColas.addRow(new Object[]{n, l, b, t});
-            }
-        }
+    int seleccion = pestanas.getSelectedIndex();
+    MyLinkedList<Computer> computadores = controller.getComputers();
+    int cantidad = computadores.size();
+    
+    if (cantidad == 0) {
+        panelDetalleColas.setVisible(false);
+        return;
     }
     
-    private String[] extraerElementos(String textoCola) {
-        if (textoCola == null) return new String[0];
-        String limpio = textoCola.trim();
-        if (limpio.startsWith("[")) limpio = limpio.substring(1);
-        if (limpio.endsWith("]")) limpio = limpio.substring(0, limpio.length() - 1);
-        if (limpio.trim().isEmpty()) return new String[0];
-        return limpio.split(",\\s*");
+    panelDetalleColas.setVisible(true);
+    int compIndex = seleccion > 0 ? seleccion - 1 : 0;
+    
+    if (compIndex < cantidad) {
+        Computer c = computadores.get(compIndex);
+        var kernel = c.getKernel();
+        
+        String[] nuevos = extraerElementos(kernel.getNewQueue().toString());
+        String[] listos = extraerElementos(kernel.getReadyQueue().toString());
+        String[] bloqueados = extraerElementos(kernel.getBlockedQueue().toString());
+        String[] terminados = extraerElementos(kernel.getEndedQueue().toString());
+        
+        int maxFilas = Math.max(Math.max(nuevos.length, listos.length), Math.max(bloqueados.length, terminados.length));
+        
+        modeloColas.setRowCount(0);
+        
+        // Agrega una fila por cada proceso para que queden verticualizados
+        for (int i = 0; i < maxFilas; i++) {
+            String n = (i < nuevos.length) ? nuevos[i] : "";
+            String l = (i < listos.length) ? listos[i] : "";
+            String b = (i < bloqueados.length) ? bloqueados[i] : "";
+            String t = (i < terminados.length) ? terminados[i] : "";
+            
+            modeloColas.addRow(new Object[]{n, l, b, t});
+        }
     }
+}
+    
+    private String[] extraerElementos(String textoCola) {
+    if (textoCola == null) return new String[0];
+    String limpio = textoCola.trim();
+    
+    // Remueve corchetes si existen al inicio y final
+    if (limpio.startsWith("[")) limpio = limpio.substring(1);
+    if (limpio.endsWith("]")) limpio = limpio.substring(0, limpio.length() - 1);
+    limpio = limpio.trim();
+    
+    if (limpio.isEmpty()) return new String[0];
+    
+    // 1. Si contiene el formato detallado completo PCB{...}
+    if (limpio.contains("PCB{")) {
+        return limpio.split(",\\s*(?=PCB\\{)");
+    }
+    
+    // 2. Si son nombres formateados tipo 'rew(1), rew(2)' o simplemente separados por comas
+    return limpio.split(",\\s*");
+}
 
-    private void reconstruirPestanas() {
+   private void reconstruirPestanas() {
         int seleccion = pestanas.getSelectedIndex();
         int seleccionado = seleccion > 0 ? ids[seleccion - 1] : -1;
         while (pestanas.getTabCount() > 1) pestanas.removeTabAt(1);
@@ -650,15 +675,17 @@ panel.add(btnGuardar);
             resumenes[i].add(abrir);
             tarjetas.add(resumenes[i]);
             
-            JPanel contenedor = new JPanel(new BorderLayout());
-            contenedor.setBackground(FONDO);
-            contenedor.add(detalles[i], BorderLayout.NORTH);
+            // Envolver la vista de detalle directamente en un ScrollPane sin contenedores intermedios que estiren la vista
+            JScrollPane scrollDetalle = new JScrollPane(detalles[i]);
+            scrollDetalle.setBorder(null);
+            scrollDetalle.getVerticalScrollBar().setUnitIncrement(16);
             
-            pestanas.addTab(c.getName(), contenedor);
+            pestanas.addTab(c.getName(), scrollDetalle);
             
             if (ids[i] == seleccionado) pestanas.setSelectedIndex(indice);
         }
-        tarjetas.revalidate(); tarjetas.repaint();
+        tarjetas.revalidate(); 
+        tarjetas.repaint();
     }
 
     private static final class VistaComputador extends JPanel {
@@ -678,11 +705,20 @@ panel.add(btnGuardar);
         VistaComputador(Computer c, boolean detalle) {
             this.computador = c;
             this.detalle = detalle;
-            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-            setBackground(PAPEL);
-            setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(BORDE),
-                    BorderFactory.createEmptyBorder(22, 22, 22, 22)));
             
+            // Usamos BorderLayout para empaquetar el contenido arriba sin deformaciones
+            setLayout(new BorderLayout());
+            setBackground(PAPEL);
+            setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(BORDE),
+                    BorderFactory.createEmptyBorder(22, 22, 22, 22)));
+
+            // Panel interno donde colocamos verticalmente todos los elementos
+            JPanel contenido = new JPanel();
+            contenido.setLayout(new BoxLayout(contenido, BoxLayout.Y_AXIS));
+            contenido.setOpaque(false);
+            contenido.setAlignmentX(Component.LEFT_ALIGNMENT);
+
             JPanel panelPolitica = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
             panelPolitica.setOpaque(false);
             panelPolitica.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -729,49 +765,81 @@ panel.add(btnGuardar);
             memoria.setAlignmentX(Component.LEFT_ALIGNMENT);
             colas.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-            add(nombre); add(Box.createVerticalStrut(8)); add(panelPolitica);
-            add(Box.createVerticalStrut(20)); add(cpu);
-            add(Box.createVerticalStrut(8)); add(proceso);
-            if (detalle) { add(Box.createVerticalStrut(8)); add(registros); }
-            add(Box.createVerticalStrut(20));
-            add(memoria);
-            add(Box.createVerticalStrut(20)); add(colas);
+            contenido.add(nombre); 
+            contenido.add(Box.createVerticalStrut(8)); 
+            contenido.add(panelPolitica);
+            contenido.add(Box.createVerticalStrut(16)); 
+            contenido.add(cpu);
+            contenido.add(Box.createVerticalStrut(6)); 
+            contenido.add(proceso);
+            if (detalle) { 
+                contenido.add(Box.createVerticalStrut(6)); 
+                contenido.add(registros); 
+            }
+            contenido.add(Box.createVerticalStrut(16));
+            contenido.add(memoria);
+            contenido.add(Box.createVerticalStrut(16)); 
+            contenido.add(colas);
+
+            // Al colocarlo en NORTH, se mantendrá empaquetado arriba sin importar el alto del frame
+            add(contenido, BorderLayout.NORTH);
         }
+    
+
+        // Obliga al panel a mantener su altura compacta según el contenido y no expandirse en la ventana
+        @Override
+        public Dimension getMaximumSize() {
+            Dimension pref = getPreferredSize();
+            return new Dimension(Integer.MAX_VALUE, pref.height);
+        }
+    
 
         void actualizar(Computer c) {
-            actualizandoVista = true;
-            try {
-                nombre.setText(c.getName() + " · ID " + c.getId());
-                
-                if (comboPolitica.getSelectedItem() != c.getPolitica()) {
-                    comboPolitica.setSelectedItem(c.getPolitica());
-                }
-
-                boolean esRR = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN);
-                labelQuantum.setVisible(esRR);
-                spinnerQuantum.setVisible(esRR);
-                if ((Integer) spinnerQuantum.getValue() != c.getQuantum()) {
-                    spinnerQuantum.setValue(c.getQuantum());
-                }
-
-                ProcessControlBlock p = c.getCpu().getPCB();
-                cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
-                proceso.setText(p == null ? "Sin proceso" : "Proceso: " + p.getName() + " · ID " + p.getId());
-                
-                if (detalle) registros.setText(p == null ? "PC: —  ·  Prioridad: —  ·  Deadline: —"
-                        : "PC: " + c.getCpu().getPC() + "  ·  Prioridad: " + p.getPriority()
-                        + "  ·  Deadline restante: " + p.getRemainingDeadline());
-                
-                int total = c.getMemoryManager().getTotalMemory();
-                int usada = c.getMemoryManager().getUsedMemory();
-                memoria.setText("RAM " + usada + " / " + total);
-                
-                var kernel = c.getKernel();
-                colas.setText("Nuevos: " + kernel.getNewQueue().size() + "  ·  Listos: " + kernel.getReadyQueue().size()
-                        + "  ·  Bloqueados: " + kernel.getBlockedQueue().size() + "  ·  Terminados: " + kernel.getEndedQueue().size());
-            } finally {
-                actualizandoVista = false;
+        actualizandoVista = true;
+        try {
+            nombre.setText(c.getName() + " · ID " + c.getId());
+            
+            if (comboPolitica.getSelectedItem() != c.getPolitica()) {
+                comboPolitica.setSelectedItem(c.getPolitica());
             }
+
+            boolean esRR = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN);
+            labelQuantum.setVisible(esRR);
+            spinnerQuantum.setVisible(esRR);
+            if ((Integer) spinnerQuantum.getValue() != c.getQuantum()) {
+                spinnerQuantum.setValue(c.getQuantum());
+            }
+
+            ProcessControlBlock p = c.getCpu().getPCB();
+            cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
+            
+            if (p == null) {
+                proceso.setText("Sin proceso");
+            } else {
+                String textoFormateado = p.toString()
+                        .replace("PCB{", "PCB { ")
+                        .replace(", type=", ",<br>type=")
+                        .replace(", remDeadline=", ",<br>remDeadline=")
+                        .replace("}", " }");
+                proceso.setText("<html>" + textoFormateado + "</html>");
+            }
+            
+            if (detalle) registros.setText(p == null 
+                    ? "PC: —  ·  MAR: —  ·  Prioridad: —  ·  Deadline: —"
+                    : "PC: " + c.getCpu().getPC() 
+                    + "  ·  MAR: " + p.getMemoryAddressRegister() 
+                    + "  ·  Prioridad: " + p.getPriority()
+                    + "  ·  Deadline restante: " + p.getRemainingDeadline());
+            
+            int total = c.getMemoryManager().getTotalMemory();
+            int usada = c.getMemoryManager().getUsedMemory();
+            memoria.setText("RAM " + usada + " / " + total);
+            
+            var kernel = c.getKernel();
+            colas.setText("Nuevos: " + kernel.getNewQueue().size() + "  ·  Listos: " + kernel.getReadyQueue().size()
+                    + "  ·  Bloqueados: " + kernel.getBlockedQueue().size() + "  ·  Terminados: " + kernel.getEndedQueue().size());
+        } finally {
+            actualizandoVista = false;
         }
-    }
+    }}
 }

@@ -36,9 +36,6 @@ public class ComputerKernel {
                           MyQueue<ProcessControlBlock> blockedQueue,
                           MyQueue<ProcessControlBlock> newQueue,
                           MyQueue<ProcessControlBlock> readyQueue,
-                          MyQueue<ProcessControlBlock> readyQueue2,
-                          MyQueue<ProcessControlBlock> readyQueue3,
-                          MyQueue<ProcessControlBlock> readyQueue4,
                           MyQueue<ProcessControlBlock> endedQueue,
                           GlobalClock clock) {
         this.processList = (processList != null) ? processList : new MyLinkedList<>();

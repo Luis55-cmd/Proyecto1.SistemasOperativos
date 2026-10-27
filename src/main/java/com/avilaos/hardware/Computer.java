@@ -6,7 +6,9 @@ package com.avilaos.hardware;
 
 import com.avilaos.core.kernel.ComputerKernel;
 import com.avilaos.core.model.SchedulingPolicyType;
+import com.avilaos.core.model.ProcessControlBlock; // Asegúrate de que esta importación coincida con tu estructura
 import com.avilaos.memory.MemoryManager;
+
 /**
  *
  * @author rafr
@@ -21,6 +23,12 @@ public class Computer {
     private SchedulingPolicyType politica;
     private int quantum = 3;
     private MemoryManager memoryManager;
+
+    // --- Variables para Métricas de Rendimiento ---
+    private int ciclosActivos = 0;
+    private int procesosCompletados = 0;
+    private int totalTiempoRespuesta = 0;
+    private int deadlinesCumplidos = 0;
 
     public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica) {
         this(id, cpu, ram, dma, kernel, politica, 3);
@@ -38,6 +46,26 @@ public class Computer {
         this.memoryManager = (ram != null) ? new com.avilaos.memory.MemoryManager(ram) : null;
     }
 
+    // --- Métodos para Métricas de Rendimiento ---
+    public void incrementarCicloActivo() { 
+        this.ciclosActivos++; 
+    }
+    
+    public void registrarTerminacion(ProcessControlBlock pcb, int cicloActual) {
+        this.procesosCompletados++;
+        // Asumiendo que el PCB tiene el método getTiempoLlegada() o equivalente
+        this.totalTiempoRespuesta += (cicloActual - pcb.getArrivalCycle()); 
+        if (cicloActual <= pcb.getDeadline()) {
+            this.deadlinesCumplidos++;
+        }
+    }
+
+    public int getCiclosActivos() { return ciclosActivos; }
+    public int getProcesosCompletados() { return procesosCompletados; }
+    public int getTotalTiempoRespuesta() { return totalTiempoRespuesta; }
+    public int getDeadlinesCumplidos() { return deadlinesCumplidos; }
+
+    // --- Métodos Originales ---
     /** Nombre visible; el ID sigue siendo la identidad. No cambia hardware ni reloj. */
     public String getName() { return name; }
 
@@ -120,5 +148,21 @@ public class Computer {
         if (memoryManager != null && memoryManager.getRam() != null) {
             this.ram = memoryManager.getRam();
         }
+    }
+
+    public void setCiclosActivos(int ciclosActivos) {
+        this.ciclosActivos = ciclosActivos;
+    }
+
+    public void setProcesosCompletados(int procesosCompletados) {
+        this.procesosCompletados = procesosCompletados;
+    }
+
+    public void setTotalTiempoRespuesta(int totalTiempoRespuesta) {
+        this.totalTiempoRespuesta = totalTiempoRespuesta;
+    }
+
+    public void setDeadlinesCumplidos(int deadlinesCumplidos) {
+        this.deadlinesCumplidos = deadlinesCumplidos;
     }
 }

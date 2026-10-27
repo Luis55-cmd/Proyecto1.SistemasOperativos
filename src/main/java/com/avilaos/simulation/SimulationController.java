@@ -128,7 +128,6 @@ public class SimulationController implements IClockTickable {
                 new MyQueue<>(),
                 new MyQueue<>(),
                 new MyQueue<>(),
-                null, null, null,
                 new MyQueue<>(),
                 this.clock
         );

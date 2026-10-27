@@ -32,6 +32,7 @@ public class PanelMetricas extends JPanel {
     private final XYSeriesCollection dataset;
     private XYSeries[] seriesComputadores;
     private Computer[] nodos;
+    private org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer;
    
     private final JLabel lblRendimientoGlobal = new JLabel("Throughput: 0 | Deadlines: 0% | Equidad: 0%");
     private final JLabel lblTiempos = new JLabel("Tiempo Respuesta Promedio: 0 ms");
@@ -51,15 +52,24 @@ public class PanelMetricas extends JPanel {
         
         // 1. Configurar Gráfico de JFreeChart
         JFreeChart chart = ChartFactory.createXYLineChart(
-                "Utilización del Procesador",
+                "Utilización acumulada del procesador",
                 "Ciclo global",
                 "Utilización (%)",
                 dataset, org.jfree.chart.plot.PlotOrientation.VERTICAL,
                 true, true, false
         );
-        chart.getXYPlot().getRangeAxis().setRange(0, 100);
+        var ejeUso = (org.jfree.chart.axis.NumberAxis) chart.getXYPlot().getRangeAxis();
+        ejeUso.setRangeType(org.jfree.data.RangeType.POSITIVE);
+        ejeUso.setAutoRangeIncludesZero(false);
+        ejeUso.setAutoRangeStickyZero(false);
+        ejeUso.setAutoRangeMinimumSize(5.0);
+        ejeUso.setLowerMargin(0.08);
+        ejeUso.setUpperMargin(0.08);
+        ejeUso.setAutoRange(true);
+        chart.getXYPlot().setSeriesRenderingOrder(org.jfree.chart.plot.SeriesRenderingOrder.FORWARD);
         chart.setBackgroundPaint(PanelPrincipal.PAPEL);
         chart.getXYPlot().setBackgroundPaint(PanelPrincipal.FONDO);
+        renderer = (org.jfree.chart.renderer.xy.XYLineAndShapeRenderer) chart.getXYPlot().getRenderer();
         ChartPanel chartPanel = new ChartPanel(chart);
         add(chartPanel, BorderLayout.CENTER);
         
@@ -107,6 +117,15 @@ public class PanelMetricas extends JPanel {
                     siguientes[i].setMaximumItemCount(2000);
                 }
                 dataset.addSeries(siguientes[i]);
+                java.awt.Color[] colores = {
+                    new java.awt.Color(52, 104, 75), new java.awt.Color(183, 108, 39),
+                    new java.awt.Color(62, 103, 150), new java.awt.Color(131, 78, 135)
+                };
+                renderer.setSeriesPaint(i, colores[i % colores.length]);
+                renderer.setSeriesStroke(i, i % 2 == 0
+                        ? new java.awt.BasicStroke(3.0f)
+                        : new java.awt.BasicStroke(2.5f, java.awt.BasicStroke.CAP_BUTT,
+                                java.awt.BasicStroke.JOIN_ROUND, 10f, new float[]{8f, 6f}, 0f));
             }
             nodos = actuales;
             seriesComputadores = siguientes;

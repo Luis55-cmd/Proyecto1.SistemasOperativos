@@ -228,6 +228,41 @@ private String extraerValorString(String texto, String clave, String defecto) {
             archivo = new File(archivo.getAbsolutePath() + ".json");
         }
 
+        guardarEstado(archivo);
+    }
+});
+          btnCargar.addActionListener(e -> {
+    JFileChooser chooser = new JFileChooser();
+    chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos JSON (*.json)", "json"));
+
+    if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+        File archivo = chooser.getSelectedFile();
+
+        cargarEstado(archivo);
+    }
+});
+panel.add(btnGuardar);
+        panel.add(btnCargar);
+        JButton btnLog = accion("Exportar log", false);
+        btnLog.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setSelectedFile(new File("avilaos-ciclo-" + controller.getCurrentCycle() + ".log"));
+            if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                try {
+                    java.nio.file.Files.writeString(chooser.getSelectedFile().toPath(), areaLog.getText(),
+                            java.nio.charset.StandardCharsets.UTF_8);
+                    controller.logEvent("Log exportado: " + chooser.getSelectedFile().getName());
+                } catch (java.io.IOException ex) {
+                    controller.logEvent("Error al exportar log: " + ex.getMessage());
+                }
+            }
+        });
+        panel.add(btnLog);
+        return panel;
+    }
+
+    /** Ruta compartida con Guardar Estado; no abre el selector de archivos. */
+    boolean guardarEstado(File archivo) {
         try (java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.FileWriter(archivo))) {
             writer.println("{");
             writer.println("  \"currentCycle\": " + controller.getCurrentCycle() + ",");
@@ -298,18 +333,15 @@ private String extraerValorString(String texto, String clave, String defecto) {
             writer.println("}");
             
             controller.logEvent("Configuración guardada exitosamente en JSON: " + archivo.getName());
+            return true;
         } catch (java.io.IOException ex) {
             controller.logEvent("Error al guardar archivo JSON: " + ex.getMessage());
+            return false;
         }
     }
-});
-          btnCargar.addActionListener(e -> {
-    JFileChooser chooser = new JFileChooser();
-    chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos JSON (*.json)", "json"));
-    
-    if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-        File archivo = chooser.getSelectedFile();
-        
+
+    /** Ruta compartida con Cargar Estado; reemplaza la sesión actual. */
+    boolean cargarEstado(File archivo) {
         try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(archivo))) {
             StringBuilder sb = new StringBuilder();
             String linea;
@@ -340,6 +372,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
                 
                 for (int i = 0; i < objetos.length; i++) {
                     String obj = objetos[i];
+                    if (!obj.contains("\"name\"")) continue;
                     String name = extraerValorString(obj, "name", "Computador " + (i + 1));
                     int ramSize = extraerValorInt(obj, "ramSize", 128);
                     String polStr = extraerValorString(obj, "policy", "FCFS");
@@ -364,6 +397,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
                 
                 for (int i = 0; i < objetos.length; i++) {
                     String obj = objetos[i];
+                    if (!obj.contains("\"hostComputerId\"")) continue;
                     int hostId = extraerValorInt(obj, "hostComputerId", 1);
                     int storage = extraerValorInt(obj, "storage", 10);
                     int sizeInMemory = extraerValorInt(obj, "sizeInMemory", storage);
@@ -445,14 +479,11 @@ private String extraerValorString(String texto, String clave, String defecto) {
             }
 
             controller.logEvent("Configuración JSON cargada exitosamente desde: " + archivo.getName());
+            return true;
         } catch (Exception ex) {
             controller.logEvent("Error al leer el archivo JSON: " + ex.getMessage());
+            return false;
         }
-    }
-});
-panel.add(btnGuardar);
-        panel.add(btnCargar);
-        return panel;
     }
 
     private static class ScrollablePanel extends JPanel implements Scrollable {

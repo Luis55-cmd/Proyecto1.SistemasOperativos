@@ -71,6 +71,9 @@ mutacion buffer_ram simulation/SimulationController.java 'storage, id, new MyQue
 "$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" com.avilaos.gui.BufferMemoryGuiTest > "$OUT/buffer-gui-base.txt"
 mutacion buffer_editable gui/PanelPrincipal.java 'memoriaBuffer.setEditable(false);' 'memoriaBuffer.setEditable(true);' 'LECTURA:' com.avilaos.gui.BufferMemoryGuiTest
 mutacion buffer_preview gui/PanelPrincipal.java 'memoriaBuffer.setText(spinnerAlmacenamiento.getValue().toString())' 'memoriaBuffer.setText("10")' 'PREVIEW:' com.avilaos.gui.BufferMemoryGuiTest
+"$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" com.avilaos.gui.EscalaMetricasTest > "$OUT/escala-base.txt"
+mutacion escala gui/PanelMetricas.java 'ejeUso.setAutoRange(true);' 'ejeUso.setRange(0, 100);' 'ESCALA:' com.avilaos.gui.EscalaMetricasTest
+mutacion trazos gui/PanelMetricas.java 'new float[]{8f, 6f}' 'null' 'TRAZOS:' com.avilaos.gui.EscalaMetricasTest
 # Repetir originales tras las mutaciones: también deben pasar.
 "$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" "$CLASS" | tee "$OUT/restaurado.txt"
 printf 'Evidencia: %s\n' "$OUT"

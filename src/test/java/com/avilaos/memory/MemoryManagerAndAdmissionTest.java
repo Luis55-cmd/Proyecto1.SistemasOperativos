@@ -50,7 +50,7 @@ public class MemoryManagerAndAdmissionTest {
         RAM ram = new RAM(500, 0, new int[500]);
         ComputerKernel kernel = new ComputerKernel(
                 new MyLinkedList<>(), new MyQueue<>(), new MyQueue<>(),
-                new MyQueue<>(), null, null, null, new MyQueue<>(), null
+                new MyQueue<>(), new MyQueue<>(), null
         );
         Computer comp = new Computer(1, null, ram, null, kernel, SchedulingPolicyType.FCFS);
 
@@ -74,7 +74,7 @@ public class MemoryManagerAndAdmissionTest {
         RAM ram = new RAM(500, 0, new int[500]);
         ComputerKernel kernel = new ComputerKernel(
                 new MyLinkedList<>(), new MyQueue<>(), new MyQueue<>(),
-                new MyQueue<>(), null, null, null, new MyQueue<>(), null
+                new MyQueue<>(), new MyQueue<>(), null
         );
         Computer comp = new Computer(1, null, ram, null, kernel, SchedulingPolicyType.FCFS);
 

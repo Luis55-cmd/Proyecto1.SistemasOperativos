@@ -255,6 +255,7 @@ public class SimulationController implements IClockTickable {
                 targetBufferId, cyclesPerOperation, requiredElements
         );
 
+        pcb.setArrivalCycle(getCurrentCycle());
         String resGestion = comp.getKernel().gestionCreateProcess(comp, pcb);
         if (resGestion != null && resGestion.startsWith("Error")) {
             logEvent(resGestion);

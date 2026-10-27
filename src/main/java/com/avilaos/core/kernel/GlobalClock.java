@@ -212,6 +212,12 @@ public class GlobalClock implements Runnable {
         }
     }
 
+    public void setCycleCounter(int cycleCounter) {
+        synchronized (tickLock) {
+            this.cycleCounter = Math.max(0, cycleCounter);
+        }
+    }
+
     public int getCycleDurationMs() {
         return cycleDurationMs;
     }

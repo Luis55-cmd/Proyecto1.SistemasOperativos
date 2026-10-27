@@ -114,6 +114,10 @@ public class SimulationController implements IClockTickable {
     // =========================================================================
 
     public synchronized Computer createComputer(int ramSize, SchedulingPolicyType policy) {
+        return createComputer(ramSize, policy, 3);
+    }
+
+    public synchronized Computer createComputer(int ramSize, SchedulingPolicyType policy, int quantum) {
         int id = nextComputerId++;
         RAM ram = new RAM(ramSize, 0, new int[ramSize]);
         CPU cpu = new CPU(0, 0, 0, null, ExecutionMode.USER);
@@ -129,15 +133,20 @@ public class SimulationController implements IClockTickable {
                 this.clock
         );
 
-        Computer comp = new Computer(id, cpu, ram, dma, kernel, policy != null ? policy : SchedulingPolicyType.FCFS);
+        Computer comp = new Computer(id, cpu, ram, dma, kernel, policy != null ? policy : SchedulingPolicyType.FCFS, quantum);
         this.computers.append(comp);
         
-        logEvent("Computador creado: " + comp.getName() + " (ID " + id + ") con política " + comp.getPolitica());
+        String quantumInfo = (comp.getPolitica() == SchedulingPolicyType.ROUND_ROBIN) ? " con quantum " + comp.getQuantum() : "";
+        logEvent("Computador creado: " + comp.getName() + " (ID " + id + ") con política " + comp.getPolitica() + quantumInfo);
         notifyGUI();
         return comp;
     }
 
     public synchronized Computer createComputer(String name, int ramSize, SchedulingPolicyType policy) {
+        return createComputer(name, ramSize, policy, 3);
+    }
+
+    public synchronized Computer createComputer(String name, int ramSize, SchedulingPolicyType policy, int quantum) {
         if (name == null || name.trim().isEmpty() || ramSize <= 0 || policy == null) {
             throw new IllegalArgumentException("Indica nombre, RAM positiva y política.");
         }
@@ -147,38 +156,173 @@ public class SimulationController implements IClockTickable {
                 throw new IllegalArgumentException("Asegúrate de usar un nombre único");
             }
         }
-        Computer computer = createComputer(ramSize, policy);
+        Computer computer = createComputer(ramSize, policy, quantum);
         computer.setName(name);
         
         notifyGUI();
         return computer;
     }
 
+    public synchronized void setComputerQuantum(int computerId, int quantum) {
+        Computer comp = getComputerById(computerId);
+        if (comp != null) {
+            comp.setQuantum(quantum);
+            logEvent("Quantum de " + comp.getName() + " actualizado a " + comp.getQuantum());
+            notifyGUI();
+        }
+    }
+
     public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
                                                           int instructions, int memory, int priority, int deadline) {
-        return createProcess(name, computerId, type, instructions, memory, priority, deadline, null, 1, 0);
+        return createProcess(name, computerId, type, instructions, memory, priority, deadline, 0, 0);
+    }
+
+    public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
+                                                          int instructions, int memory, int priority, int deadline,
+                                                          int ioInterval, int ioDuration) {
+        ProcessControlBlock pcb = createProcess(name, computerId, type, instructions, memory, priority, deadline, null, 1, 0);
+        if (pcb != null && type == ProcessType.IO_BOUND && ioInterval > 0 && ioDuration > 0) {
+            pcb.setIoInterval(ioInterval);
+            pcb.setIoDuration(ioDuration);
+            pcb.setIoCycleCountdown(ioInterval); // primer bloqueo ocurre luego de ioInterval ciclos de CPU
+        }
+        return pcb;
     }
 
     public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
                                                           int instructions, int memory, int priority, int deadline,
                                                           String targetBufferId, int cyclesPerOperation, int requiredElements) {
-        Computer comp = getComputerById(computerId);
-        if (comp == null) {
-            logEvent("Error: No se encontró el computador ID " + computerId + " para crear el proceso " + name);
+        if (name == null || name.trim().isEmpty()) {
+            logEvent("Error: El nombre del proceso no puede estar vacío");
             return null;
         }
 
+        Computer comp;
+        if (computerId == -1) {
+            comp = selectSenderInitiatedComputer(memory);
+            if (comp == null) {
+                logEvent("Error: Ningún computador tiene RAM suficiente (" + memory + ") para " + name);
+                return null;
+            }
+            computerId = comp.getId();
+        } else {
+            comp = getComputerById(computerId);
+            if (comp == null) {
+                logEvent("Error: No se encontró el computador ID " + computerId + " para crear el proceso " + name);
+                return null;
+            }
+        }
+
+        if (instructions <= 0) {
+            logEvent("Error: Las instrucciones deben ser mayores a 0 para el proceso " + name);
+            return null;
+        }
+
+        if (memory <= 0) {
+            logEvent("Error: La memoria requerida debe ser mayor a 0 para el proceso " + name);
+            return null;
+        }
+
+        if (comp.getMemoryManager() != null && memory > comp.getMemoryManager().getTotalMemory()) {
+            logEvent("Error: Memoria solicitada (" + memory + ") excede la RAM total (" 
+                    + comp.getMemoryManager().getTotalMemory() + ") de " + comp.getName());
+            return null;
+        }
+
+        if (priority < 1) {
+            logEvent("Error: La prioridad debe ser al menos 1 para el proceso " + name);
+            return null;
+        }
+
+        if (deadline <= 0) {
+            logEvent("Error: El deadline debe ser mayor a 0 para el proceso " + name);
+            return null;
+        }
+
+        if (type == ProcessType.PRODUCER || type == ProcessType.CONSUMER) {
+            if (cyclesPerOperation <= 0) {
+                logEvent("Error: Los ciclos por operación deben ser mayores a 0 para " + name);
+                return null;
+            }
+            if (requiredElements <= 0) {
+                logEvent("Error: La cantidad de elementos requeridos debe ser mayor a 0 para " + name);
+                return null;
+            }
+        }
+
         ProcessControlBlock pcb = new ProcessControlBlock(
-                name, computerId, type != null ? type : ProcessType.CPU_BOUND,
+                name.trim(), computerId, type != null ? type : ProcessType.CPU_BOUND,
                 instructions, memory, priority, deadline,
                 targetBufferId, cyclesPerOperation, requiredElements
         );
 
-        comp.getKernel().gestionCreateProcess(comp, pcb);
+        String resGestion = comp.getKernel().gestionCreateProcess(comp, pcb);
+        if (resGestion != null && resGestion.startsWith("Error")) {
+            logEvent(resGestion);
+            return null;
+        }
         
-        logEvent("Proceso creado: " + name + " (ID " + pcb.getId() + ") asignado a " + comp.getName());
+        logEvent("Proceso creado: " + pcb.getName() + " (ID " + pcb.getId() + ", Mem: " + memory + ") asignado a " + comp.getName());
         notifyGUI();
         return pcb;
+    }
+
+    /**
+     * Algoritmo de distribución de carga iniciado por el emisor (Sender-Initiated Load Balancing).
+     * Selecciona automáticamente el computador de destino para un proceso entrante:
+     * 1. Descarta computadores cuya RAM total no pueda albergar la memoria del proceso.
+     * 2. Evalúa la carga activa de cada nodo (CPU + Listos + Bloqueados) contra el umbral T (3).
+     *    Si encuentra un nodo con carga < T, lo selecciona de inmediato (iniciativa del emisor).
+     * 3. Si todos los nodos superan el umbral T, selecciona el nodo con menor carga activa (contingencia).
+     *
+     * @param requiredMemory Memoria solicitada por el proceso.
+     * @return El computador seleccionado, o null si ninguno tiene capacidad de RAM suficiente.
+     */
+    public synchronized Computer selectSenderInitiatedComputer(int requiredMemory) {
+        if (this.computers.isEmpty()) {
+            return null;
+        }
+
+        final int THRESHOLD_LOAD = 3;
+        Computer bestCandidate = null;
+        int minLoad = Integer.MAX_VALUE;
+
+        for (int i = 0; i < this.computers.size(); i++) {
+            Computer c = this.computers.get(i);
+            if (c == null) continue;
+
+            // Filtro de viabilidad física de memoria
+            if (c.getMemoryManager() != null && requiredMemory > c.getMemoryManager().getTotalMemory()) {
+                continue;
+            }
+
+            int running = (c.getCpu() != null && c.getCpu().getPCB() != null) ? 1 : 0;
+            int ready = (c.getKernel() != null && c.getKernel().getReadyQueue() != null) ? c.getKernel().getReadyQueue().size() : 0;
+            int blocked = (c.getKernel() != null && c.getKernel().getBlockedQueue() != null) ? c.getKernel().getBlockedQueue().size() : 0;
+            int load = running + ready + blocked;
+
+            // Iniciativa del emisor: primer nodo receptor que esté por debajo del umbral de carga
+            if (load < THRESHOLD_LOAD) {
+                logEvent("[Sender-Initiated] Asignando proceso a " + c.getName() 
+                        + " (Carga: " + load + " < Umbral T=" + THRESHOLD_LOAD + ")");
+                return c;
+            }
+
+            if (load < minLoad) {
+                minLoad = load;
+                bestCandidate = c;
+            }
+        }
+
+        if (bestCandidate != null) {
+            logEvent("[Sender-Initiated] Todos los nodos superaron umbral T=" + THRESHOLD_LOAD 
+                    + ". Asignando a " + bestCandidate.getName() + " por menor carga (" + minLoad + ")");
+        }
+        return bestCandidate;
+    }
+
+    public synchronized Buffer createBuffer(int hostComputerId, int storage) {
+        return createBuffer(hostComputerId, storage, storage);
     }
 
     public synchronized Buffer createBuffer(int hostComputerId, int storage, int memory) {
@@ -212,6 +356,10 @@ public class SimulationController implements IClockTickable {
     // =========================================================================
 
     public void startSimulation() {
+        if (this.computers.isEmpty()) {
+            logEvent("No se puede iniciar la simulación: No hay computadores creados.");
+            return;
+        }
         this.clock.start();
         logEvent("Simulación iniciada");
         notifyGUI();
@@ -224,6 +372,10 @@ public class SimulationController implements IClockTickable {
     }
 
     public void stepSimulation() {
+        if (this.computers.isEmpty()) {
+            logEvent("No se puede avanzar el ciclo: No hay computadores creados.");
+            return;
+        }
         this.clock.step();
         notifyGUI();
     }
@@ -240,6 +392,10 @@ public class SimulationController implements IClockTickable {
 
     public int getCurrentCycle() {
         return this.clock.getCycleCounter();
+    }
+
+    public void setCurrentCycle(int cycle) {
+        this.clock.setCycleCounter(cycle);
     }
 
     public boolean isRunning() {
@@ -320,6 +476,31 @@ public class SimulationController implements IClockTickable {
             }
         }
         return null;
+    }
+
+    public MyLinkedList<ProcessControlBlock> getAllProcesses() {
+        MyLinkedList<ProcessControlBlock> all = new MyLinkedList<>();
+        for (int i = 0; i < this.computers.size(); i++) {
+            Computer comp = this.computers.get(i);
+            if (comp != null && comp.getKernel() != null) {
+                MyLinkedList<ProcessControlBlock> list = comp.getKernel().getProcessList();
+                if (list != null) {
+                    for (int j = 0; j < list.size(); j++) {
+                        all.append(list.get(j));
+                    }
+                }
+            }
+        }
+        return all;
+    }
+
+    public synchronized void restoreProcess(ProcessControlBlock pcb) {
+        if (pcb == null) return;
+        Computer comp = getComputerById(pcb.getComputerId());
+        if (comp != null && comp.getKernel() != null) {
+            comp.getKernel().restoreProcess(comp, pcb);
+            notifyGUI();
+        }
     }
 
     public synchronized void reset() {

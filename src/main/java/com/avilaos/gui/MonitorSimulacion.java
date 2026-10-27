@@ -1,7 +1,10 @@
 package com.avilaos.gui;
 
 import com.avilaos.hardware.Computer;
+import com.avilaos.core.model.BlockReason;
 import com.avilaos.core.model.ProcessControlBlock;
+import com.avilaos.core.model.ProcessState;
+import com.avilaos.core.model.ProcessType;
 import com.avilaos.core.model.SchedulingPolicyType;
 import com.avilaos.core.structures.MyLinkedList;
 import com.avilaos.simulation.SimulationController;
@@ -225,6 +228,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
 
         try (java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.FileWriter(archivo))) {
             writer.println("{");
+            writer.println("  \"currentCycle\": " + controller.getCurrentCycle() + ",");
             writer.println("  \"cycleDurationMs\": " + controller.getCycleDurationMs() + ",");
             writer.println("  \"networkLatency\": " + controller.getNetworkLatency() + ",");
             
@@ -237,6 +241,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
                 writer.println("      \"name\": \"" + c.getName() + "\",");
                 writer.println("      \"ramSize\": " + c.getMemoryManager().getTotalMemory() + ",");
                 writer.println("      \"policy\": \"" + c.getPolitica() + "\",");
+                writer.println("      \"quantum\": " + c.getQuantum());
                 writer.print("    }" + (i < comps.size() - 1 ? "," : ""));
                 writer.println();
             }
@@ -253,6 +258,38 @@ private String extraerValorString(String texto, String clave, String defecto) {
                 writer.println("      \"storage\": " + b.getStorage() + ",");
                 writer.println("      \"sizeInMemory\": " + b.getSizeInMemory());
                 writer.print("    }" + (i < bufs.size() - 1 ? "," : ""));
+                writer.println();
+            }
+            writer.println("  ],");
+
+            // Exportar Procesos (con todos sus atributos y estado actual)
+            writer.println("  \"processes\": [");
+            MyLinkedList<ProcessControlBlock> procs = controller.getAllProcesses();
+            for (int i = 0; i < procs.size(); i++) {
+                ProcessControlBlock p = procs.get(i);
+                writer.println("    {");
+                writer.println("      \"id\": " + p.getId() + ",");
+                writer.println("      \"name\": \"" + p.getName() + "\",");
+                writer.println("      \"computerId\": " + p.getComputerId() + ",");
+                writer.println("      \"type\": \"" + p.getType() + "\",");
+                writer.println("      \"totalInstructions\": " + p.getTotalInstructions() + ",");
+                writer.println("      \"remainingTime\": " + p.getRemainingTime() + ",");
+                writer.println("      \"assignedMemory\": " + p.getAssignedMemory() + ",");
+                writer.println("      \"priority\": " + p.getPriority() + ",");
+                writer.println("      \"deadline\": " + p.getDeadline() + ",");
+                writer.println("      \"remainingDeadline\": " + p.getRemainingDeadline() + ",");
+                writer.println("      \"state\": \"" + p.getState() + "\",");
+                writer.println("      \"blockReason\": \"" + p.getBlockReason() + "\",");
+                writer.println("      \"programCounter\": " + p.getProgramCounter() + ",");
+                writer.println("      \"memoryAddressRegister\": " + p.getMemoryAddressRegister() + ",");
+                writer.println("      \"ioInterval\": " + p.getIoInterval() + ",");
+                writer.println("      \"ioDuration\": " + p.getIoDuration() + ",");
+                writer.println("      \"ioCycleCountdown\": " + p.getIoCycleCountdown() + ",");
+                writer.println("      \"targetBufferId\": " + (p.getTargetBufferId() != null ? "\"" + p.getTargetBufferId() + "\"" : "null") + ",");
+                writer.println("      \"cyclesPerOperation\": " + p.getCyclesPerOperation() + ",");
+                writer.println("      \"requiredElements\": " + p.getRequiredElements() + ",");
+                writer.println("      \"processedElements\": " + p.getProcessedElements());
+                writer.print("    }" + (i < procs.size() - 1 ? "," : ""));
                 writer.println();
             }
             writer.println("  ]");
@@ -284,11 +321,13 @@ private String extraerValorString(String texto, String clave, String defecto) {
             controller.reset();
 
             // Parámetros globales
+            int currentCycle = extraerValorInt(json, "currentCycle", 0);
             int cycleDuration = extraerValorInt(json, "cycleDurationMs", 1000);
             int networkLatency = extraerValorInt(json, "networkLatency", 2);
             
             controller.setCycleDurationMs(cycleDuration);
             controller.setNetworkLatency(networkLatency);
+            controller.setCurrentCycle(currentCycle);
 
             // Reconstrucción de Computadores
             int startComp = json.indexOf("\"computers\": [");
@@ -309,7 +348,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
                         pol = SchedulingPolicyType.valueOf(polStr);
                     } catch (Exception ex) { }
 
-                    Computer c = controller.createComputer(name, ramSize, pol);
+                    Computer c = controller.createComputer(name, ramSize, pol, quantum);
                     
                 }
             }
@@ -331,6 +370,75 @@ private String extraerValorString(String texto, String clave, String defecto) {
                         // Pasar storage y sizeInMemory al controlador
                         controller.createBuffer(hostId, storage,sizeInMemory);
                     }
+                }
+            }
+
+            // Reconstrucción de Procesos (con todos sus atributos y estado)
+            int startProc = json.indexOf("\"processes\": [");
+            int endProc = json.indexOf("]", startProc);
+            if (startProc != -1 && endProc != -1) {
+                String bloqProcs = json.substring(startProc, endProc);
+                String[] objetos = bloqProcs.split("\\}\\s*,\\s*\\{");
+                int maxId = 0;
+                for (int i = 0; i < objetos.length; i++) {
+                    String obj = objetos[i];
+                    if (obj.trim().isEmpty() || !obj.contains("\"name\"")) continue;
+
+                    int pId = extraerValorInt(obj, "id", i + 1);
+                    maxId = Math.max(maxId, pId);
+                    String name = extraerValorString(obj, "name", "Proceso-" + pId);
+                    int computerId = extraerValorInt(obj, "computerId", 1);
+                    String typeStr = extraerValorString(obj, "type", "CPU_BOUND");
+                    int totalInstructions = extraerValorInt(obj, "totalInstructions", 10);
+                    int remainingTime = extraerValorInt(obj, "remainingTime", totalInstructions);
+                    int assignedMemory = extraerValorInt(obj, "assignedMemory", 10);
+                    int priority = extraerValorInt(obj, "priority", 1);
+                    int deadline = extraerValorInt(obj, "deadline", 100);
+                    int remainingDeadline = extraerValorInt(obj, "remainingDeadline", deadline);
+                    String stateStr = extraerValorString(obj, "state", "LISTO");
+                    String blockReasonStr = extraerValorString(obj, "blockReason", "NONE");
+                    int pc = extraerValorInt(obj, "programCounter", 0);
+                    int mar = extraerValorInt(obj, "memoryAddressRegister", 0);
+                    int ioInterval = extraerValorInt(obj, "ioInterval", 0);
+                    int ioDuration = extraerValorInt(obj, "ioDuration", 0);
+                    int ioCycleCountdown = extraerValorInt(obj, "ioCycleCountdown", ioInterval);
+                    String targetBufId = extraerValorString(obj, "targetBufferId", null);
+                    if ("null".equalsIgnoreCase(targetBufId)) targetBufId = null;
+                    int cyclesPerOp = extraerValorInt(obj, "cyclesPerOperation", 1);
+                    int reqElem = extraerValorInt(obj, "requiredElements", 0);
+                    int procElem = extraerValorInt(obj, "processedElements", 0);
+
+                    ProcessType pType = ProcessType.CPU_BOUND;
+                    try { pType = ProcessType.valueOf(typeStr); } catch (Exception ex) {}
+
+                    ProcessState pState = ProcessState.LISTO;
+                    try { pState = ProcessState.valueOf(stateStr); } catch (Exception ex) {}
+
+                    BlockReason bReason = BlockReason.NONE;
+                    try { bReason = BlockReason.valueOf(blockReasonStr); } catch (Exception ex) {}
+
+                    ProcessControlBlock pcb = new ProcessControlBlock(
+                        name, computerId, pType, totalInstructions, assignedMemory, priority, deadline
+                    );
+                    pcb.setId(pId);
+                    pcb.setRemainingTime(remainingTime);
+                    pcb.setRemainingDeadline(remainingDeadline);
+                    pcb.setState(pState);
+                    pcb.setBlockReason(bReason);
+                    pcb.setProgramCounter(pc);
+                    pcb.setMemoryAddressRegister(mar);
+                    pcb.setIoInterval(ioInterval);
+                    pcb.setIoDuration(ioDuration);
+                    pcb.setIoCycleCountdown(ioCycleCountdown);
+                    pcb.setTargetBufferId(targetBufId);
+                    pcb.setCyclesPerOperation(cyclesPerOp);
+                    pcb.setRequiredElements(reqElem);
+                    pcb.setProcessedElements(procElem);
+
+                    controller.restoreProcess(pcb);
+                }
+                if (maxId > 0) {
+                    ProcessControlBlock.resetIdGenerator(maxId + 1);
                 }
             }
 
@@ -367,9 +475,27 @@ panel.add(btnGuardar);
         controles.setAlignmentX(LEFT_ALIGNMENT);
         intervalo.setSelectedItem(controller.getCycleDurationMs());
         intervalo.setPreferredSize(new Dimension(90, 36));
-        iniciar.addActionListener(e -> controller.startSimulation());
+        iniciar.addActionListener(e -> {
+            if (controller.getComputers().isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                        "Debes crear al menos un computador antes de iniciar la simulación.",
+                        "Sin computadores",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            controller.startSimulation();
+        });
         pausar.addActionListener(e -> { if (controller.isRunning() && !controller.isPaused()) controller.pauseSimulation(); });
-        paso.addActionListener(e -> { if (!controller.isRunning() || controller.isPaused()) controller.stepSimulation(); });
+        paso.addActionListener(e -> {
+            if (controller.getComputers().isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                        "Debes crear al menos un computador para avanzar paso a paso.",
+                        "Sin computadores",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (!controller.isRunning() || controller.isPaused()) controller.stepSimulation();
+        });
         aplicar.addActionListener(e -> {
             Integer ms = (Integer) intervalo.getSelectedItem();
             if (ms != null) { controller.setCycleDurationMs(ms); actualizarControlesReloj(); }
@@ -539,12 +665,15 @@ panel.add(btnGuardar);
         private final Computer computador;
         private final JLabel nombre = texto("", 20, TINTA, true);
         private final JComboBox<SchedulingPolicyType> comboPolitica = new JComboBox<>(SchedulingPolicyType.values());
+        private final JLabel labelQuantum = texto("Quantum: ", 13, GRIS, false);
+        private final JSpinner spinnerQuantum = new JSpinner(new SpinnerNumberModel(3, 1, 99, 1));
         private final JLabel cpu = texto("", 14, TINTA, true);
         private final JLabel proceso = texto("", 13, GRIS, false);
         private final JLabel registros = texto("", 13, GRIS, false);
         private final JLabel colas = texto("", 13, TINTA, false);
         private final JLabel memoria = texto("", 13, GRIS, false);
         private final boolean detalle;
+        private boolean actualizandoVista = false;
 
         VistaComputador(Computer c, boolean detalle) {
             this.computador = c;
@@ -565,9 +694,33 @@ panel.add(btnGuardar);
                 SchedulingPolicyType seleccion = (SchedulingPolicyType) comboPolitica.getSelectedItem();
                 if (seleccion != null && seleccion != computador.getPolitica()) {
                     computador.setPolitica(seleccion);
+                    boolean esRR = (seleccion == SchedulingPolicyType.ROUND_ROBIN);
+                    labelQuantum.setVisible(esRR);
+                    spinnerQuantum.setVisible(esRR);
+                    panelPolitica.revalidate();
+                    panelPolitica.repaint();
                 }
             });
             panelPolitica.add(comboPolitica);
+
+            spinnerQuantum.setValue(c.getQuantum());
+            spinnerQuantum.setPreferredSize(new Dimension(55, 26));
+            boolean esRRInicial = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN);
+            labelQuantum.setVisible(esRRInicial);
+            spinnerQuantum.setVisible(esRRInicial);
+
+            spinnerQuantum.addChangeListener(e -> {
+                if (!actualizandoVista) {
+                    int val = (Integer) spinnerQuantum.getValue();
+                    if (val != computador.getQuantum()) {
+                        computador.setQuantum(val);
+                    }
+                }
+            });
+
+            panelPolitica.add(Box.createHorizontalStrut(10));
+            panelPolitica.add(labelQuantum);
+            panelPolitica.add(spinnerQuantum);
 
             nombre.setAlignmentX(Component.LEFT_ALIGNMENT);
             cpu.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -586,27 +739,39 @@ panel.add(btnGuardar);
         }
 
         void actualizar(Computer c) {
-            nombre.setText(c.getName() + " · ID " + c.getId());
-            
-            if (comboPolitica.getSelectedItem() != c.getPolitica()) {
-                comboPolitica.setSelectedItem(c.getPolitica());
-            }
+            actualizandoVista = true;
+            try {
+                nombre.setText(c.getName() + " · ID " + c.getId());
+                
+                if (comboPolitica.getSelectedItem() != c.getPolitica()) {
+                    comboPolitica.setSelectedItem(c.getPolitica());
+                }
 
-            ProcessControlBlock p = c.getCpu().getPCB();
-            cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
-            proceso.setText(p == null ? "Sin proceso" : "Proceso: " + p.getName() + " · ID " + p.getId());
-            
-            if (detalle) registros.setText(p == null ? "PC: —  ·  Prioridad: —  ·  Deadline: —"
-                    : "PC: " + c.getCpu().getPC() + "  ·  Prioridad: " + p.getPriority()
-                    + "  ·  Deadline restante: " + p.getRemainingDeadline());
-            
-            int total = c.getMemoryManager().getTotalMemory();
-            int usada = c.getMemoryManager().getUsedMemory();
-            memoria.setText("RAM " + usada + " / " + total);
-            
-            var kernel = c.getKernel();
-            colas.setText("Nuevos: " + kernel.getNewQueue().size() + "  ·  Listos: " + kernel.getReadyQueue().size()
-                    + "  ·  Bloqueados: " + kernel.getBlockedQueue().size() + "  ·  Terminados: " + kernel.getEndedQueue().size());
+                boolean esRR = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN);
+                labelQuantum.setVisible(esRR);
+                spinnerQuantum.setVisible(esRR);
+                if ((Integer) spinnerQuantum.getValue() != c.getQuantum()) {
+                    spinnerQuantum.setValue(c.getQuantum());
+                }
+
+                ProcessControlBlock p = c.getCpu().getPCB();
+                cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
+                proceso.setText(p == null ? "Sin proceso" : "Proceso: " + p.getName() + " · ID " + p.getId());
+                
+                if (detalle) registros.setText(p == null ? "PC: —  ·  Prioridad: —  ·  Deadline: —"
+                        : "PC: " + c.getCpu().getPC() + "  ·  Prioridad: " + p.getPriority()
+                        + "  ·  Deadline restante: " + p.getRemainingDeadline());
+                
+                int total = c.getMemoryManager().getTotalMemory();
+                int usada = c.getMemoryManager().getUsedMemory();
+                memoria.setText("RAM " + usada + " / " + total);
+                
+                var kernel = c.getKernel();
+                colas.setText("Nuevos: " + kernel.getNewQueue().size() + "  ·  Listos: " + kernel.getReadyQueue().size()
+                        + "  ·  Bloqueados: " + kernel.getBlockedQueue().size() + "  ·  Terminados: " + kernel.getEndedQueue().size());
+            } finally {
+                actualizandoVista = false;
+            }
         }
     }
 }

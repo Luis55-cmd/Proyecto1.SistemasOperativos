@@ -119,6 +119,11 @@ public class ComputerKernel {
             return "Error: Computador o proceso inválido.";
         }
 
+        if (idComp.getMemoryManager() != null && p.getAssignedMemory() > idComp.getMemoryManager().getTotalMemory()) {
+            return "Error: La memoria solicitada (" + p.getAssignedMemory() + ") excede la RAM total (" 
+                    + idComp.getMemoryManager().getTotalMemory() + ") de " + idComp.getName() + ".";
+        }
+
         this.processList.append(p);
 
         boolean admitido = admitProcess(idComp, p);
@@ -126,6 +131,47 @@ public class ComputerKernel {
             return "Se ha creado el proceso y admitido a la cola de listos.";
         } else {
             return "Memoria insuficiente: Proceso en cola de NUEVOS en espera de RAM.";
+        }
+    }
+
+    /**
+     * Restaura un proceso desde un snapshot/JSON, ubicándolo directamente en su estado y cola
+     * correspondiente y reservando memoria si se encuentra activo en RAM.
+     */
+    public void restoreProcess(Computer com, ProcessControlBlock p) {
+        if (com == null || p == null) return;
+        this.processList.append(p);
+
+        if (p.getState() == ProcessState.EJECUTANDO
+                || p.getState() == ProcessState.LISTO
+                || p.getState() == ProcessState.BLOQUEADO) {
+            if (com.getMemoryManager() != null) {
+                com.getMemoryManager().allocateMemory(p.getAssignedMemory());
+            }
+        }
+
+        switch (p.getState()) {
+            case EJECUTANDO:
+                if (com.getCpu() != null) {
+                    com.getCpu().setPCB(p);
+                    com.getCpu().setPC(p.getProgramCounter());
+                    com.getCpu().setMAR(p.getMemoryAddressRegister());
+                    com.getCpu().setMode(p.getMode() != null ? p.getMode() : ExecutionMode.USER);
+                }
+                break;
+            case LISTO:
+                this.readyQueue.enqueue(p);
+                break;
+            case BLOQUEADO:
+                this.blockedQueue.enqueue(p);
+                break;
+            case SALIENTE:
+                this.endedQueue.enqueue(p);
+                break;
+            case NUEVO:
+            default:
+                this.newQueue.enqueue(p);
+                break;
         }
     }
 
@@ -200,13 +246,26 @@ public class ComputerKernel {
             this.currentPolicy = policy;
             switch (policy) {
                 case FCFS -> this.activeScheduler = new FcfsScheduler();
-                case ROUND_ROBIN -> this.activeScheduler = new RoundRobinScheduler(3);
+                case ROUND_ROBIN -> this.activeScheduler = new RoundRobinScheduler(com != null ? com.getQuantum() : 3);
                 case EDF -> this.activeScheduler = new EdfScheduler();
                 case PRIORITY_PREEMPTIVE -> this.activeScheduler = new PreemptivePriorityScheduler();
                 default -> this.activeScheduler = new FcfsScheduler();
             }
+        } else if (policy == SchedulingPolicyType.ROUND_ROBIN && this.activeScheduler instanceof RoundRobinScheduler rr) {
+            if (com != null && rr.getQuantum() != com.getQuantum()) {
+                rr.setQuantum(com.getQuantum());
+            }
         }
         return this.activeScheduler;
+    }
+
+    /**
+     * Actualiza el quantum del planificador Round Robin activo en caliente.
+     */
+    public void updateQuantum(int quantum) {
+        if (this.activeScheduler instanceof RoundRobinScheduler rr) {
+            rr.setQuantum(quantum);
+        }
     }
 
     public void terminateFatherProcess(int fatherId) {
@@ -417,6 +476,9 @@ public class ComputerKernel {
         // 3. Avanzar solicitudes pendientes de red para procesos bloqueados
         advanceNetworkDelays(comp, syncDriver);
 
+        // 3.2 Avanzar temporizadores de bloqueo IO para procesos IO-bound
+        advanceIOBlocks();
+
         // 3.5 Mover a readyQueue los procesos que wakeUpProcess marcó como LISTO
         //     pero que aún pueden estar físicamente en blockedQueue.
         flushWokenProcesses();
@@ -444,13 +506,26 @@ public class ComputerKernel {
                 }
             } else {
                 currentRunning.executeOneCycle(currentCycle);
+
+                // Verificar si un proceso IO_BOUND debe bloquearse tras este ciclo de CPU
+                if (currentRunning.getType() == ProcessType.IO_BOUND
+                        && currentRunning.getIoInterval() > 0
+                        && currentRunning.getState() == ProcessState.EJECUTANDO) {
+                    int countdown = currentRunning.getIoCycleCountdown() - 1;
+                    if (countdown <= 0) {
+                        // Bloquear: el ioCycleCountdown pasa a ioDuration para el desbloqueo
+                        currentRunning.setIoCycleCountdown(currentRunning.getIoDuration());
+                        blockProcess(comp, currentRunning);
+                        currentRunning.setBlockReason(BlockReason.WAITING_IO);
+                    } else {
+                        currentRunning.setIoCycleCountdown(countdown);
+                    }
+                }
             }
 
-            // Sincronizar registros hardware — solo el kernel toca la CPU
+            // Sincronizar registros hardware mediante la interfaz común de reloj (ARC-22)
             if (cpu.getPCB() != null) {
-                cpu.setPC(currentRunning.getProgramCounter());
-                cpu.setMAR(currentRunning.getMemoryAddressRegister());
-                cpu.setMode(currentRunning.getMode());
+                cpu.tick(currentCycle);
             }
 
             // Verificar terminación natural
@@ -458,6 +533,11 @@ public class ComputerKernel {
                     || currentRunning.getRemainingTime() <= 0) {
                 terminateProcess(comp, currentRunning);
             }
+        }
+
+        // 6. Avanzar componentes de hardware auxiliares que reaccionan al reloj (ARC-22)
+        if (comp.getDma() != null) {
+            comp.getDma().tick(currentCycle);
         }
     }
 
@@ -486,6 +566,28 @@ public class ComputerKernel {
                 boolean completed = syncDriver.stepNetworkDelay(p);
                 // Notificar y desbloquear al completarse, sin reactivar si fue cancelado por deadline
                 if (completed && p.getState() != ProcessState.SALIENTE) {
+                    blockedToReady(p);
+                }
+            }
+        }
+    }
+
+    /**
+     * Avanza el contador de bloqueo IO para procesos IO-bound bloqueados por WAITING_IO.
+     * Cuando ioCycleCountdown llega a 0, el proceso vuelve a la cola de listos
+     * y su contador se resetea al ioInterval para el próximo ciclo IO.
+     */
+    private void advanceIOBlocks() {
+        for (int i = 0; i < this.processList.size(); i++) {
+            ProcessControlBlock p = this.processList.get(i);
+            if (p != null
+                    && p.getState() == ProcessState.BLOQUEADO
+                    && p.getBlockReason() == BlockReason.WAITING_IO) {
+                int countdown = p.getIoCycleCountdown() - 1;
+                p.setIoCycleCountdown(countdown);
+                if (countdown <= 0 && p.getState() != ProcessState.SALIENTE) {
+                    // Desbloquear: volver a READY y preparar countdown para el próximo IO
+                    p.setIoCycleCountdown(p.getIoInterval());
                     blockedToReady(p);
                 }
             }

@@ -106,7 +106,7 @@ public class MemoryManagerAndAdmissionTest {
         ProcessControlBlock pcb = new ProcessControlBlock("Prod", 1, ProcessType.PRODUCER, 20, 50, 1, 100);
         if (pcb.getMode() != ExecutionMode.USER) throw new AssertionError("Modo inicial debe ser USER");
 
-        pcb.setMode(ExecutionMode.SYSTEM);
-        if (pcb.getMode() != ExecutionMode.SYSTEM) throw new AssertionError("Debe permitir cambiar a modo SYSTEM");
+        pcb.setMode(ExecutionMode.KERNEL);
+        if (pcb.getMode() != ExecutionMode.KERNEL) throw new AssertionError("Debe permitir cambiar a modo KERNEL");
     }
 }

@@ -100,6 +100,10 @@ public class RoundRobinScheduler implements IScheduler {
 
     public void setQuantum(int quantum) {
         this.quantum = Math.max(1, quantum);
+        // Decisión D-10 / A29: recortar el quantum en curso si excede el nuevo límite
+        if (this.currentQuantumRemaining > this.quantum) {
+            this.currentQuantumRemaining = this.quantum;
+        }
     }
 
     public int getCurrentQuantumRemaining() {

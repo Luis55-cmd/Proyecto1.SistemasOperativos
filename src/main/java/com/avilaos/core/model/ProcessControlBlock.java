@@ -53,6 +53,14 @@ public class ProcessControlBlock {
     private boolean networkDelayDone = false;
     private boolean terminated = false;
 
+    // Atributos para procesos IO-bound
+    /** Ciclos de CPU que el proceso ejecuta antes de lanzar una solicitud de IO. 0 = no aplica. */
+    private int ioInterval = 0;
+    /** Ciclos que el proceso permanece bloqueado esperando IO. 0 = no aplica. */
+    private int ioDuration = 0;
+    /** Contador interno: ciclos restantes hasta el próximo evento IO (ejecución o bloqueo). */
+    private int ioCycleCountdown = 0;
+
     /**
      * Constructor por defecto: asigna ID único generado automáticamente.
      */
@@ -226,6 +234,30 @@ public class ProcessControlBlock {
             this.remainingTime--;
             this.programCounter++;
         }
+    }
+
+    public int getIoInterval() {
+        return ioInterval;
+    }
+
+    public void setIoInterval(int ioInterval) {
+        this.ioInterval = ioInterval;
+    }
+
+    public int getIoDuration() {
+        return ioDuration;
+    }
+
+    public void setIoDuration(int ioDuration) {
+        this.ioDuration = ioDuration;
+    }
+
+    public int getIoCycleCountdown() {
+        return ioCycleCountdown;
+    }
+
+    public void setIoCycleCountdown(int ioCycleCountdown) {
+        this.ioCycleCountdown = ioCycleCountdown;
     }
     
     public int getSyncStage() {

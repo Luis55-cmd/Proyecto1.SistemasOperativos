@@ -31,6 +31,7 @@ public class PanelPrincipal extends JPanel {
     private final javax.swing.border.Border bordeNombreNormal = nombreComputador.getBorder();
     private final JLabel errorNombre = texto(" ", 12, new Color(166, 44, 38), false);
     private SchedulingPolicyType politicaSeleccionada = SchedulingPolicyType.FCFS;
+    private final JSpinner spinnerQuantum = new JSpinner(new SpinnerNumberModel(3, 1, 99, 1));
     private final JLabel resultadoComputador = texto("Todavía no has creado computadores desde esta vista.", 12, GRIS, false);
     private final DefaultTableModel computadoresVisibles = new DefaultTableModel(
             new String[]{"ID", "Nombre", "RAM", "Política"}, 0) {
@@ -203,6 +204,11 @@ public class PanelPrincipal extends JPanel {
         JPanel politica = campo("Política inicial", selectorPolitica());
         politica.setPreferredSize(new Dimension(480, 62));
         campos.add(politica);
+        campos.add(Box.createHorizontalStrut(24));
+        JPanel panelQuantum = campo("Quantum (RR)", spinnerQuantum);
+        panelQuantum.setPreferredSize(new Dimension(110, 62));
+        spinnerQuantum.setEnabled(politicaSeleccionada == SchedulingPolicyType.ROUND_ROBIN);
+        campos.add(panelQuantum);
         tarjeta.add(campos);
         tarjeta.add(Box.createVerticalStrut(22));
         JButton crear = accion("Crear computador", true);
@@ -353,6 +359,7 @@ public class PanelPrincipal extends JPanel {
                         case "Prioridades" -> SchedulingPolicyType.PRIORITY_PREEMPTIVE;
                         default -> SchedulingPolicyType.FCFS;
                     };
+                    spinnerQuantum.setEnabled(politicaSeleccionada == SchedulingPolicyType.ROUND_ROBIN);
                 }
                 boton.setBackground(boton.isSelected() ? ACENTO : PAPEL);
                 boton.setForeground(boton.isSelected() ? Color.WHITE : TINTA);
@@ -373,7 +380,8 @@ public class PanelPrincipal extends JPanel {
         }
         Computer creado;
         try {
-            creado = controller.createComputer(nombreComputador.getText(), ram, politicaSeleccionada);
+            int quantum = (Integer) spinnerQuantum.getValue();
+            creado = controller.createComputer(nombreComputador.getText(), ram, politicaSeleccionada, quantum);
         } catch (IllegalArgumentException error) {
             nombreComputador.setBorder(BorderFactory.createLineBorder(new Color(166, 44, 38), 2));
             errorNombre.setText(error.getMessage());
@@ -388,8 +396,11 @@ public class PanelPrincipal extends JPanel {
         computadoresVisibles.setRowCount(0);
         for (int i = 0; i < controller.getComputers().size(); i++) {
             Computer c = controller.getComputers().get(i);
+            String polStr = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN)
+                    ? "Round Robin (Q: " + c.getQuantum() + ")"
+                    : c.getPolitica().toString();
             computadoresVisibles.addRow(new Object[]{c.getId(), c.getName(),
-                    c.getRam().getTotalSize(), c.getPolitica()});
+                    c.getRam().getTotalSize(), polStr});
         }
     }
 

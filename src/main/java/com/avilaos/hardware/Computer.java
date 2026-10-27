@@ -19,9 +19,14 @@ public class Computer {
     private DMA dma;
     private ComputerKernel kernel;
     private SchedulingPolicyType politica;
+    private int quantum = 3;
     private MemoryManager memoryManager;
 
     public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica) {
+        this(id, cpu, ram, dma, kernel, politica, 3);
+    }
+
+    public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica, int quantum) {
         this.id = id;
         this.name = "Computador " + id;
         this.cpu = cpu;
@@ -29,6 +34,7 @@ public class Computer {
         this.dma = dma;
         this.kernel = kernel;
         this.politica = politica;
+        this.quantum = Math.max(1, quantum);
         this.memoryManager = (ram != null) ? new com.avilaos.memory.MemoryManager(ram) : null;
     }
 
@@ -49,6 +55,17 @@ public class Computer {
 
     public void setPolitica(SchedulingPolicyType politica) {
         this.politica = politica;
+    }
+
+    public int getQuantum() {
+        return quantum;
+    }
+
+    public void setQuantum(int quantum) {
+        this.quantum = Math.max(1, quantum);
+        if (this.kernel != null) {
+            this.kernel.updateQuantum(this.quantum);
+        }
     }
 
     public int getId() {

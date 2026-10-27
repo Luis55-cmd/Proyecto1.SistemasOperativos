@@ -22,6 +22,9 @@ public class MonitorSimulacionTest {
         SwingUtilities.invokeAndWait(() -> {
             var controller = SimulationController.getInstance(); controller.reset();
             var panel = new PanelPrincipal(); panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
+            ((JButton) CreacionComputadoresGuiTest.buscar(panel, JButton.class, "06   Métricas")).doClick();
+            if (panel.getDestinoActual() != PanelPrincipal.Destino.METRICAS) throw new AssertionError("MENU: acceso directo a métricas");
+            panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
             var monitor = (MonitorSimulacion) CreacionComputadoresGuiTest.buscar(panel, MonitorSimulacion.class, null);
             var pestanas = (JTabbedPane) CreacionComputadoresGuiTest.buscar(monitor, JTabbedPane.class, null);
             if (pestanas.getTabCount() != 2 || !contiene(monitor, "Todavía no hay computadores")) throw new AssertionError("Vacío");

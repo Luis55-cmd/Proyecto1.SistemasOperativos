@@ -67,7 +67,10 @@ mutacion duplicados gui/PanelMetricas.java 'new XYSeries(actuales[i].getName(), 
 mutacion historia gui/PanelMetricas.java 'if (nodos[j] == actuales[i])' 'if (false)' 'HISTORIA:' "$METRICAS"
 mutacion menu gui/PanelPrincipal.java 'boton.addActionListener(e -> mostrarPanel(destino));' 'boton.addActionListener(e -> mostrarPanel(destino == Destino.METRICAS ? Destino.MENU : destino));' 'MENU:' "$MONITOR"
 "$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" com.avilaos.memory.BufferMemoryTest > "$OUT/buffer-base.txt"
-mutacion buffer_ram core/kernel/ComputerKernel.java 'int cantidad = buffer.getSizeInMemory();' 'int cantidad = buffer.getStorage();' 'RAM: reserva tamaño declarado' com.avilaos.memory.BufferMemoryTest
+mutacion buffer_ram simulation/SimulationController.java 'storage, id, new MyQueue<>(), storage);' 'storage, id, new MyQueue<>(), memory);' 'CAPACIDAD:' com.avilaos.memory.BufferMemoryTest
+"$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" com.avilaos.gui.BufferMemoryGuiTest > "$OUT/buffer-gui-base.txt"
+mutacion buffer_editable gui/PanelPrincipal.java 'memoriaBuffer.setEditable(false);' 'memoriaBuffer.setEditable(true);' 'LECTURA:' com.avilaos.gui.BufferMemoryGuiTest
+mutacion buffer_preview gui/PanelPrincipal.java 'memoriaBuffer.setText(spinnerAlmacenamiento.getValue().toString())' 'memoriaBuffer.setText("10")' 'PREVIEW:' com.avilaos.gui.BufferMemoryGuiTest
 # Repetir originales tras las mutaciones: también deben pasar.
 "$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" "$CLASS" | tee "$OUT/restaurado.txt"
 printf 'Evidencia: %s\n' "$OUT"

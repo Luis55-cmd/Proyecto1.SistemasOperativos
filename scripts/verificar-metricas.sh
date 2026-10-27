@@ -65,6 +65,7 @@ mutacion utilizacion gui/PanelMetricas.java 'c.getCiclosActivos() / c.getCiclosO
 mutacion eje gui/PanelMetricas.java 'addOrUpdate((double) cicloActual, utilizacion)' 'addOrUpdate((double) cicloActual + 1, utilizacion)' 'EJE:' "$METRICAS"
 mutacion duplicados gui/PanelMetricas.java 'new XYSeries(actuales[i].getName(), true, false)' 'new XYSeries(actuales[i].getName(), true, true)' 'GRAFICO:' "$METRICAS"
 mutacion historia gui/PanelMetricas.java 'if (nodos[j] == actuales[i])' 'if (false)' 'HISTORIA:' "$METRICAS"
+mutacion menu gui/PanelPrincipal.java 'boton.addActionListener(e -> mostrarPanel(destino));' 'boton.addActionListener(e -> mostrarPanel(destino == Destino.METRICAS ? Destino.MENU : destino));' 'MENU:' "$MONITOR"
 # Repetir originales tras las mutaciones: también deben pasar.
 "$JAVA_BIN/java" -Djava.awt.headless=true -cp "$TMP/base/classes:$DEPS" "$CLASS" | tee "$OUT/restaurado.txt"
 printf 'Evidencia: %s\n' "$OUT"

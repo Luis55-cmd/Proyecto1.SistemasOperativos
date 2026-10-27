@@ -26,6 +26,8 @@ public class Computer {
 
     // --- Variables para Métricas de Rendimiento ---
     private int ciclosActivos = 0;
+    private int ciclosObservados = 0;
+    private int procesosFinalizados = 0;
     private int procesosCompletados = 0;
     private int totalTiempoRespuesta = 0;
     private int deadlinesCumplidos = 0;
@@ -51,13 +53,20 @@ public class Computer {
         this.ciclosActivos++; 
     }
     
+    /** Un tick observado por este computador, incluso si no tiene un proceso ejecutando. */
+    public void registrarCicloObservado() { ciclosObservados++; }
+    public int getCiclosObservados() { return ciclosObservados; }
+    public int getProcesosFinalizados() { return procesosFinalizados; }
+
+    /** Invocado una sola vez por terminateProcess; abortos no cuentan como trabajo completado. */
     public void registrarTerminacion(ProcessControlBlock pcb, int cicloActual) {
-        this.procesosCompletados++;
-        // Asumiendo que el PCB tiene el método getTiempoLlegada() o equivalente
-        this.totalTiempoRespuesta += (cicloActual - pcb.getArrivalCycle()); 
-        if (cicloActual <= pcb.getDeadline()) {
-            this.deadlinesCumplidos++;
-        }
+        procesosFinalizados++;
+        boolean completo = pcb.getRemainingTime() <= 0
+                || (pcb.getRequiredElements() > 0 && pcb.getProcessedElements() >= pcb.getRequiredElements());
+        if (!completo) return;
+        procesosCompletados++;
+        totalTiempoRespuesta += Math.max(0, pcb.getStartCycle() - pcb.getArrivalCycle());
+        if (pcb.getRemainingDeadline() > 0) deadlinesCumplidos++;
     }
 
     public int getCiclosActivos() { return ciclosActivos; }

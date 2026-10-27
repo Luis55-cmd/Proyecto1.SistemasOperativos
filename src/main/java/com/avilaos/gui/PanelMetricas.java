@@ -13,12 +13,14 @@ import com.avilaos.simulation.SimulationController;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
-import org.jfree.data.time.Millisecond;
-import org.jfree.data.time.TimeSeries;
-import org.jfree.data.time.TimeSeriesCollection;
+import org.jfree.data.xy.XYSeries;
+import com.avilaos.hardware.Computer;
+import org.jfree.data.xy.XYSeriesCollection;
 
 import javax.swing.JPanel;
 import javax.swing.JLabel;
+import javax.swing.JTable;
+import javax.swing.table.DefaultTableModel;
 import javax.swing.JScrollPane;
 import javax.swing.BorderFactory;
 import java.awt.BorderLayout;
@@ -27,30 +29,37 @@ import java.awt.Dimension;
 
 public class PanelMetricas extends JPanel {
     private final SimulationController controller;
-    private final TimeSeriesCollection dataset;
-    private TimeSeries[] seriesComputadores;
-    private int[] idsComputadores;
+    private final XYSeriesCollection dataset;
+    private XYSeries[] seriesComputadores;
+    private Computer[] nodos;
    
     private final JLabel lblRendimientoGlobal = new JLabel("Throughput: 0 | Deadlines: 0% | Equidad: 0%");
     private final JLabel lblTiempos = new JLabel("Tiempo Respuesta Promedio: 0 ms");
+    private final DefaultTableModel tablaEquipos = new DefaultTableModel(
+            new Object[]{"Computador", "CPU %", "Completados", "Proc/tick", "Respuesta (ticks)", "Deadline %"}, 0) {
+        @Override public boolean isCellEditable(int row, int column) { return false; }
+    };
     private final JPanel panelBuffers = new JPanel(new GridLayout(0, 1));
 
     public PanelMetricas(SimulationController controller) {
         this.controller = controller;
-        this.dataset = new TimeSeriesCollection();
-        this.seriesComputadores = new TimeSeries[0];
-        this.idsComputadores = new int[0];
+        this.dataset = new XYSeriesCollection();
+        this.seriesComputadores = new XYSeries[0];
+        this.nodos = new Computer[0];
         
         setLayout(new BorderLayout());
         
         // 1. Configurar Gráfico de JFreeChart
-        JFreeChart chart = ChartFactory.createTimeSeriesChart(
+        JFreeChart chart = ChartFactory.createXYLineChart(
                 "Utilización del Procesador",
-                "Tiempo",
+                "Ciclo global",
                 "Utilización (%)",
-                dataset,
+                dataset, org.jfree.chart.plot.PlotOrientation.VERTICAL,
                 true, true, false
         );
+        chart.getXYPlot().getRangeAxis().setRange(0, 100);
+        chart.setBackgroundPaint(PanelPrincipal.PAPEL);
+        chart.getXYPlot().setBackgroundPaint(PanelPrincipal.FONDO);
         ChartPanel chartPanel = new ChartPanel(chart);
         add(chartPanel, BorderLayout.CENTER);
         
@@ -63,60 +72,85 @@ public class PanelMetricas extends JPanel {
         pnlGlobal.add(lblTiempos);
         
         pnlInferior.add(pnlGlobal, BorderLayout.NORTH);
-        pnlInferior.add(new JScrollPane(panelBuffers), BorderLayout.CENTER);
+        JPanel tablas = new JPanel(new GridLayout(2, 1, 0, 8));
+        JTable tabla = new JTable(tablaEquipos);
+        tabla.setRowHeight(24);
+        tablas.add(new JScrollPane(tabla));
+        tablas.add(new JScrollPane(panelBuffers));
+        pnlInferior.add(tablas, BorderLayout.CENTER);
         
-        pnlInferior.setPreferredSize(new Dimension(800, 150));
+        pnlInferior.setPreferredSize(new Dimension(800, 270));
         add(pnlInferior, BorderLayout.SOUTH);
     }
 
     public void actualizarMetricas() {
         int cicloActual = controller.getCurrentCycle();
-        if (cicloActual == 0) return;
+
 
         var computadores = controller.getComputers();
         int cantidadComputadores = computadores.size();
         
-        // Sincronizar arreglos si cambia la cantidad de computadores
-        if (seriesComputadores.length != cantidadComputadores) {
+        // Conservar las series de las mismas instancias al agregar computadores.
+        boolean cambio = nodos.length != cantidadComputadores;
+        for (int i = 0; !cambio && i < cantidadComputadores; i++) cambio = nodos[i] != computadores.get(i);
+        if (cambio) {
+            XYSeries[] siguientes = new XYSeries[cantidadComputadores];
+            Computer[] actuales = new Computer[cantidadComputadores];
             dataset.removeAllSeries();
-            seriesComputadores = new TimeSeries[cantidadComputadores];
-            idsComputadores = new int[cantidadComputadores];
-            
             for (int i = 0; i < cantidadComputadores; i++) {
-                var c = computadores.get(i);
-                idsComputadores[i] = c.getId();
-                seriesComputadores[i] = new TimeSeries(c.getName());
-                dataset.addSeries(seriesComputadores[i]);
+                actuales[i] = computadores.get(i);
+                for (int j = 0; j < nodos.length; j++) {
+                    if (nodos[j] == actuales[i]) siguientes[i] = seriesComputadores[j];
+                }
+                if (siguientes[i] == null) {
+                    siguientes[i] = new XYSeries(actuales[i].getName(), true, false);
+                    siguientes[i].setMaximumItemCount(2000);
+                }
+                dataset.addSeries(siguientes[i]);
             }
+            nodos = actuales;
+            seriesComputadores = siguientes;
         }
 
         int procesosCompletadosGlobal = 0;
         int deadlinesCumplidosGlobal = 0;
+        int finalizadosGlobal = 0;
         int tiempoRespuestaTotalGlobal = 0;
+        long activosGlobal = 0, observadosGlobal = 0;
+        tablaEquipos.setRowCount(0);
         double maxUtil = -1.0;
         double minUtil = 101.0;
         
-        Millisecond ahora = new Millisecond();
+
         
         // Actualizar datos de Computadores y Gráfico
         for (int i = 0; i < cantidadComputadores; i++) {
             var c = computadores.get(i);
             
-            double utilizacion = ((double) c.getCiclosActivos() / cicloActual) * 100.0;
-            seriesComputadores[i].addOrUpdate(ahora, utilizacion);
+            double utilizacion = c.getCiclosObservados() == 0 ? 0.0 : ((double) c.getCiclosActivos() / c.getCiclosObservados()) * 100.0;
+            seriesComputadores[i].addOrUpdate((double) cicloActual, utilizacion);
             
+            activosGlobal += c.getCiclosActivos();
+            observadosGlobal += c.getCiclosObservados();
+            tablaEquipos.addRow(new Object[]{
+                c.getName(), String.format("%.1f", utilizacion), c.getProcesosCompletados(),
+                String.format("%.4f", c.getCiclosObservados() == 0 ? 0.0 : (double) c.getProcesosCompletados() / c.getCiclosObservados()),
+                String.format("%.1f", c.getProcesosCompletados() == 0 ? 0.0 : (double) c.getTotalTiempoRespuesta() / c.getProcesosCompletados()),
+                String.format("%.1f", c.getProcesosFinalizados() == 0 ? 0.0 : 100.0 * c.getDeadlinesCumplidos() / c.getProcesosFinalizados())
+            });
             if (utilizacion > maxUtil) maxUtil = utilizacion;
             if (utilizacion < minUtil) minUtil = utilizacion;
             
+            finalizadosGlobal += c.getProcesosFinalizados();
             procesosCompletadosGlobal += c.getProcesosCompletados();
             deadlinesCumplidosGlobal += c.getDeadlinesCumplidos();
             tiempoRespuestaTotalGlobal += c.getTotalTiempoRespuesta();
         }
 
         // Calcular KPIs del Sistema
-        double throughput = (double) procesosCompletadosGlobal / cicloActual;
-        double ratioDeadlines = procesosCompletadosGlobal > 0 
-                ? ((double) deadlinesCumplidosGlobal / procesosCompletadosGlobal) * 100 : 0.0;
+        double throughput = cicloActual == 0 ? 0.0 : (double) procesosCompletadosGlobal / cicloActual;
+        double ratioDeadlines = finalizadosGlobal > 0
+                ? ((double) deadlinesCumplidosGlobal / finalizadosGlobal) * 100 : 0.0;
         double equidad = (cantidadComputadores > 1 && maxUtil >= 0) ? (maxUtil - minUtil) : 0.0;
         double tiempoRespuestaPromedio = procesosCompletadosGlobal > 0 
                 ? (double) tiempoRespuestaTotalGlobal / procesosCompletadosGlobal : 0.0;
@@ -124,7 +158,8 @@ public class PanelMetricas extends JPanel {
         lblRendimientoGlobal.setText(String.format("Throughput Global: %.4f proc/tick | Deadlines Cumplidos: %.1f%% | Equidad (Brecha Util): %.1f%%", 
                 throughput, ratioDeadlines, equidad));
         
-        lblTiempos.setText(String.format("Tiempo Respuesta Promedio: %.1f ticks", tiempoRespuestaPromedio));
+        lblTiempos.setText(String.format("Respuesta media (completados): %.1f ticks | CPU global: %.1f%%", tiempoRespuestaPromedio,
+                observadosGlobal == 0 ? 0.0 : 100.0 * activosGlobal / observadosGlobal));
 
         // Actualizar KPIs de Buffers usando iteración estándar sobre tu MyLinkedList
         panelBuffers.removeAll();

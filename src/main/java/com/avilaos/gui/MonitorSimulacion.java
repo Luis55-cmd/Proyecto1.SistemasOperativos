@@ -597,7 +597,7 @@ panel.add(btnGuardar);
     MyLinkedList<Computer> computadores = controller.getComputers();
     int cantidad = computadores.size();
     
-    if (cantidad == 0) {
+    if (cantidad == 0 || pestanas.getSelectedComponent() == panelMetricas) {
         panelDetalleColas.setVisible(false);
         return;
     }
@@ -652,7 +652,8 @@ panel.add(btnGuardar);
 
    private void reconstruirPestanas() {
         int seleccion = pestanas.getSelectedIndex();
-        int seleccionado = seleccion > 0 ? ids[seleccion - 1] : -1;
+        boolean viendoMetricas = pestanas.getSelectedComponent() == panelMetricas;
+        int seleccionado = seleccion > 0 && seleccion <= ids.length ? ids[seleccion - 1] : -1;
         while (pestanas.getTabCount() > 1) pestanas.removeTabAt(1);
         tarjetas.removeAll();
         
@@ -683,6 +684,10 @@ panel.add(btnGuardar);
             pestanas.addTab(c.getName(), scrollDetalle);
             
             if (ids[i] == seleccionado) pestanas.setSelectedIndex(indice);
+        }
+        if (panelMetricas != null) {
+            pestanas.addTab("Métricas", panelMetricas);
+            if (viendoMetricas) pestanas.setSelectedComponent(panelMetricas);
         }
         tarjetas.revalidate(); 
         tarjetas.repaint();

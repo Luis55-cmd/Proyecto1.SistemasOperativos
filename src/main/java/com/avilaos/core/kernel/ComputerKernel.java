@@ -297,6 +297,9 @@ public class ComputerKernel {
             return;
         }
 
+        if (com != null) {
+            com.registrarTerminacion(p, clock != null ? clock.getCycleCounter() : Math.max(0, p.getCompletionCycle()));
+        }
         p.setTerminated(true);
         p.setState(ProcessState.SALIENTE);
         p.setBlockReason(BlockReason.NONE);
@@ -461,6 +464,8 @@ public class ComputerKernel {
         CPU cpu = comp.getCpu();
         if (cpu == null) return;
 
+        comp.registrarCicloObservado();
+
         // 1. Notificar al planificador (quantum Round Robin, etc.)
         IScheduler scheduler = getOrUpdateScheduler(comp);
         if (scheduler != null) {
@@ -487,6 +492,8 @@ public class ComputerKernel {
 
         // 5. Ejecutar 1 ciclo si hay un proceso en CPU
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
+            comp.incrementarCicloActivo();
+            if (currentRunning.getStartCycle() < 0) currentRunning.setStartCycle(currentCycle);
             if (currentRunning.getType() == ProcessType.PRODUCER
                     || currentRunning.getType() == ProcessType.CONSUMER) {
                 Buffer targetBuf = findBufferById(

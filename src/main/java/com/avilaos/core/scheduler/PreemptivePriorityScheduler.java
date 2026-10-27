@@ -52,6 +52,10 @@ public class PreemptivePriorityScheduler implements IScheduler {
     public ProcessControlBlock scheduleNext(MyQueue<ProcessControlBlock> queue, ProcessControlBlock currentRunning) {
         MyQueue<ProcessControlBlock> targetQueue = (queue != null) ? queue : this.readyQueue;
 
+        // El kernel entrega su propia cola, que puede contener nuevas admisiones sin ordenar.
+        // Ordenar antes de peek/dequeue cubre CPU libre y apropiación, y deja visible el orden real.
+        sortQueue(targetQueue);
+
         // Si hay un proceso en CPU, verificamos si algún proceso en cola tiene mayor prioridad (desalojo)
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
             if (!targetQueue.isEmpty()) {

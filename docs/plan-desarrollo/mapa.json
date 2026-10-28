@@ -1,0 +1,821 @@
+{
+  "status": "propuesta_para_revision_no_autorizacion_de_implementacion",
+  "date": "2026-10-02",
+  "source": "../enunciado/checklist-requerimientos-proyecto-1.md",
+  "source_sha256": "b28fdaa29d12573061dcac24664fc82dba48a4ec254a9ba06e70551f77b8388a",
+  "packages": [
+    {
+      "id": "P01",
+      "title": "Acordar reglas y recorridos",
+      "type": "Definición",
+      "requirements": [],
+      "dependencies": [],
+      "questions": [
+        "D-01",
+        "D-04",
+        "D-05",
+        "D-06",
+        "D-07",
+        "D-09",
+        "D-11",
+        "D-16"
+      ],
+      "result": "Documento de decisiones y escenarios: creación/admisión, CPU/E/S, productor–consumidor y ciclos. Registrar respuestas de Ares o supuestos explícitamente aceptados por el equipo. Cada decisión conserva su D-xx y las funciones cuyo contrato afectará.",
+      "verification": "El equipo recorre un caso normal y una espera indicando quién decide, qué estado cambia y qué salida produce. Las dudas no resueltas siguen visibles y condicionan sólo los paquetes afectados.",
+      "notes": "Paquete de preparación derivado del trabajo de diseño; no es un requisito adicional del enunciado. No exige cerrar las 16 dudas para avanzar: entrega una línea base revisada y se actualiza cuando lleguen respuestas."
+    },
+    {
+      "id": "P02",
+      "title": "Entorno Java y NetBeans",
+      "type": "Preparación",
+      "requirements": [
+        "TEC-02",
+        "TEC-03",
+        "TEC-04",
+        "TEC-05"
+      ],
+      "dependencies": [],
+      "questions": [],
+      "result": "Proyecto mínimo reproducible que abre y ejecuta en NetBeans con la versión Java acordada conforme al enunciado. Instrucciones de arranque.",
+      "verification": "Otro integrante abre la misma revisión y ejecuta el proyecto. Inspeccionar primero el proyecto Java existente; no recrearlo ni sobrescribirlo por defecto.",
+      "notes": ""
+    },
+    {
+      "id": "P03",
+      "title": "Definir contratos y tipos comunes",
+      "type": "Diseño",
+      "requirements": [
+        "ARC-15",
+        "ARC-16",
+        "ARC-17",
+        "ARC-18",
+        "ARC-19",
+        "ARC-20",
+        "ARC-21",
+        "ARC-22",
+        "PRO-22",
+        "PRO-25",
+        "PRO-26"
+      ],
+      "dependencies": [
+        "P01",
+        "P02"
+      ],
+      "questions": [
+        "D-03",
+        "D-04",
+        "D-05",
+        "D-16"
+      ],
+      "result": "Contratos revisados para las responsabilidades del diagrama de capas; enumeraciones e interfaces mínimas, con entradas, salidas, estado y conexiones. La relación proceso/hilo se explica sin imponer una clase por responsabilidad.",
+      "verification": "Los integrantes explican las interfaces y cómo agregar una política sin cambiar el selector. Cada firma propuesta tiene finalidad y consumidores conocidos.",
+      "notes": "No diseña automáticamente todo el producto. Completar activamente con el estudiante los mapas de función que exige AGENTS.md antes de implementar. Los contratos pueden refinarse en paquetes posteriores."
+    },
+    {
+      "id": "P04",
+      "title": "Estructuras propias y acceso seguro",
+      "type": "Implementación",
+      "requirements": [
+        "TEC-08",
+        "ARC-12"
+      ],
+      "dependencies": [
+        "P02",
+        "P03"
+      ],
+      "questions": [],
+      "result": "Operaciones necesarias de las estructuras propias elegidas por el equipo y protección de accesos compartidos entre threads Java mediante semáforos.",
+      "verification": "Insertar, extraer, buscar y recorrer con casos vacío/uno/varios; comprobar conservación de elementos bajo concurrencia cuando aplique.",
+      "notes": "Construir sólo las estructuras justificadas por los contratos. No implementar un framework genérico. Si las estructuras elegidas resultan muchas, dividir este paquete preservando la trazabilidad."
+    },
+    {
+      "id": "P05",
+      "title": "Proceso, PCB y estados",
+      "type": "Implementación",
+      "requirements": [
+        "PRO-23",
+        "PRO-24",
+        "PCB-01",
+        "PCB-02",
+        "PCB-03",
+        "PCB-04",
+        "PCB-05",
+        "PCB-06",
+        "PCB-07",
+        "PCB-08",
+        "PCB-09",
+        "PCB-10",
+        "PCB-11",
+        "EST-01",
+        "EST-02",
+        "EST-03",
+        "EST-04",
+        "EST-05",
+        "EST-06",
+        "EST-07"
+      ],
+      "dependencies": [
+        "P03"
+      ],
+      "questions": [
+        "D-03",
+        "D-07"
+      ],
+      "result": "Representación y operaciones de creación/actualización de procesos, identidad única global, PCB y estado con motivo de bloqueo.",
+      "verification": "Crear procesos de dos computadores sin colisiones de ID; comprobar campos y estados. Todavía no exigir ejecución automática ni GUI.",
+      "notes": ""
+    },
+    {
+      "id": "P06",
+      "title": "Computador reutilizable",
+      "type": "Implementación",
+      "requirements": [
+        "ARC-01",
+        "ARC-02",
+        "ARC-04",
+        "ARC-05",
+        "ARC-06",
+        "ARC-07",
+        "ARC-08",
+        "ARC-09",
+        "ARC-10"
+      ],
+      "dependencies": [
+        "P04",
+        "P05"
+      ],
+      "questions": [],
+      "result": "Una unidad computador instanciable con CPU, RAM y responsabilidades de SO/colas propias, conectada mediante los contratos revisados.",
+      "verification": "Instanciar al menos dos computadores; cambiar el estado de uno no altera accidentalmente el otro. Agregar otro no duplica código.",
+      "notes": "Es ensamblaje mínimo: no vuelve a implementar los algoritmos de paquetes posteriores ni presupone que todas las operaciones ya estén disponibles."
+    },
+    {
+      "id": "P07",
+      "title": "Reloj global y avance por ciclo",
+      "type": "Implementación",
+      "requirements": [
+        "ARC-11",
+        "ARC-13",
+        "ARC-14",
+        "CIC-01",
+        "CIC-02",
+        "CIC-03",
+        "CIC-04",
+        "CFG-01"
+      ],
+      "dependencies": [
+        "P06"
+      ],
+      "questions": [
+        "D-04"
+      ],
+      "result": "Coordinación por threads que hace avanzar una vez cada computador por ciclo; duración ajustable y reglas acordadas para PC/MAR y ejecución lineal.",
+      "verification": "Con dos computadores y una carga controlada, registrar N ciclos sin saltos ni dobles avances. Un proceso que espera no ejecuta instrucciones por recibir un pulso global.",
+      "notes": "Primero usar una instrucción abstracta acordada; el generador de cargas CPU/E/S llega en P09. No exige fijar aquí una relación thread Java/proceso simulado no acordada."
+    },
+    {
+      "id": "P08",
+      "title": "Admisión y liberación de RAM",
+      "type": "Implementación",
+      "requirements": [
+        "MEM-01",
+        "MEM-02",
+        "MEM-03",
+        "MEM-04",
+        "MEM-05",
+        "MEM-06",
+        "MEM-07",
+        "MEM-08",
+        "MEM-09"
+      ],
+      "dependencies": [
+        "P06"
+      ],
+      "questions": [
+        "D-08",
+        "D-12"
+      ],
+      "result": "Control de RAM limitada/configurable, reserva al admitir, permanencia en Nuevo y liberación/revisión de admisión al terminar.",
+      "verification": "Recorrer: cabe, no cabe, liberación que habilita uno y varios candidatos de distintos tamaños. Explicar la política de admisión elegida.",
+      "notes": "La ocupación de buffers se conecta en P17 al mismo control de capacidad. No agregar suspensión, disco ni paginación."
+    },
+    {
+      "id": "P09",
+      "title": "Ejecución CPU y espera de E/S",
+      "type": "Implementación",
+      "requirements": [
+        "PRO-08",
+        "PRO-09",
+        "PRO-12",
+        "PRO-13"
+      ],
+      "dependencies": [
+        "P07",
+        "P08"
+      ],
+      "questions": [
+        "D-04",
+        "D-05",
+        "D-16"
+      ],
+      "result": "Cargas CPU bound e I/O bound con reglas explícitas para instrucciones, duración, solicitud de E/S, bloqueo, progreso y notificación de finalización.",
+      "verification": "P1 espera E/S mientras puede avanzar otra actividad; al concluir el evento P1 vuelve a Listo. No asumir que despertar implica ganar CPU.",
+      "notes": "El nombre y detalle de DMA dependen de D-16. Probar inicialmente con una asignación controlada; P10 añade la política de selección."
+    },
+    {
+      "id": "P10",
+      "title": "Despacho y política FCFS",
+      "type": "Implementación",
+      "requirements": [
+        "PLA-01",
+        "PLA-06",
+        "PLA-07",
+        "PLA-10"
+      ],
+      "dependencies": [
+        "P09"
+      ],
+      "questions": [
+        "D-01"
+      ],
+      "result": "Selección FCFS y despacho mediante el contrato común, cola única de listos y política propia por computador.",
+      "verification": "Trazar selección, bloqueo, retorno y fin de procesos. Comprobar que FCFS no desaloja por llegada de otro listo.",
+      "notes": "FCFS se propone como primera política por facilidad de verificación, no como dependencia matemática de RR/EDF/prioridades. Los siguientes paquetes reutilizan el mecanismo común de despacho, no la implementación de FCFS."
+    },
+    {
+      "id": "P11",
+      "title": "Round Robin y quantum",
+      "type": "Implementación",
+      "requirements": [
+        "PLA-03",
+        "PLA-04",
+        "CFG-02"
+      ],
+      "dependencies": [
+        "P10"
+      ],
+      "questions": [
+        "D-01",
+        "D-04",
+        "D-10"
+      ],
+      "result": "Política RR integrada en el despacho común; quantum configurable y cambio en ejecución conforme a la decisión registrada.",
+      "verification": "Comparar traza prevista y real de expiración, bloqueo antes del límite y cambio de quantum. No implementar VRR salvo nuevo alcance acordado.",
+      "notes": ""
+    },
+    {
+      "id": "P12",
+      "title": "Deadline y terminación forzada",
+      "type": "Implementación",
+      "requirements": [
+        "EST-08"
+      ],
+      "dependencies": [
+        "P09"
+      ],
+      "questions": [
+        "D-07",
+        "D-13"
+      ],
+      "result": "Regla común de avance de deadline y terminación por vencimiento, con retirada de la ubicación actual y liberación de RAM según contrato.",
+      "verification": "Vencer en Nuevo, Listo, Ejecución y espera E/S; comprobar el caso de terminación justo en el límite conforme a D-07.",
+      "notes": "D-13 define el contrato de limpieza ampliable. P18/P19 deben integrar cancelación de permisos y esperas de buffer/red; este paquete aislado no demuestra cumplimiento completo de EST-08 en esos escenarios futuros."
+    },
+    {
+      "id": "P13",
+      "title": "Política EDF",
+      "type": "Implementación",
+      "requirements": [
+        "PLA-02"
+      ],
+      "dependencies": [
+        "P10",
+        "P12"
+      ],
+      "questions": [
+        "D-01",
+        "D-07"
+      ],
+      "result": "EDF sobre la semántica de deadline ya definida, con desempates y apropiación explicitados como decisiones del equipo o del preparador.",
+      "verification": "Comparar una traza manual con deadlines diferentes e iguales y con nuevas llegadas. No confundir prioridad EDF con el acto común de terminar por vencimiento.",
+      "notes": ""
+    },
+    {
+      "id": "P14",
+      "title": "Prioridades apropiativas",
+      "type": "Implementación",
+      "requirements": [
+        "PLA-05"
+      ],
+      "dependencies": [
+        "P10"
+      ],
+      "questions": [
+        "D-01"
+      ],
+      "result": "Política por prioridad con desalojo y convenciones de orden/desempate explícitas.",
+      "verification": "Verificar llegada y desbloqueo de uno de mayor prioridad, además de empate. No confundir prioridad de CPU con selección de víctimas de memoria.",
+      "notes": ""
+    },
+    {
+      "id": "P15",
+      "title": "Cambio de política por computador",
+      "type": "Implementación",
+      "requirements": [
+        "PLA-08",
+        "PLA-09"
+      ],
+      "dependencies": [
+        "P11",
+        "P13",
+        "P14"
+      ],
+      "questions": [
+        "D-01",
+        "D-10"
+      ],
+      "result": "Cambio en ejecución que conserva los procesos y reorganiza lo necesario según reglas acordadas, independientemente en cada computador.",
+      "verification": "Cambiar entre políticas con un proceso ejecutando y otros listos; comprobar que no se pierden ni duplican y que otra máquina conserva su política.",
+      "notes": "Si Ares autoriza sólo tres políticas, ajustar las dependencias y registrar el alcance aceptado. Este borrador conserva las cuatro enumeradas."
+    },
+    {
+      "id": "P16",
+      "title": "Primitivas de semáforo y bloqueo",
+      "type": "Implementación",
+      "requirements": [
+        "SEM-01",
+        "SEM-05",
+        "SEM-06",
+        "SEM-07",
+        "SEM-08",
+        "SEM-09",
+        "CIC-05",
+        "CIC-06",
+        "CIC-07",
+        "CIC-08"
+      ],
+      "dependencies": [
+        "P10"
+      ],
+      "questions": [
+        "D-03",
+        "D-04",
+        "D-13"
+      ],
+      "result": "Semáforos del modelo con wait/signal, espera y despertar, integración con el estado del proceso y costo de una instrucción en modo SO por primitiva.",
+      "verification": "Esperar sin permiso libera CPU; señalizar habilita al proceso correcto sin ejecutarlo automáticamente; reanudar no duplica la reserva.",
+      "notes": "Estos semáforos del simulador son distintos de los semáforos Java que protegen sus estructuras. Su integración con cancelación debe respetar el contrato de P12."
+    },
+    {
+      "id": "P17",
+      "title": "Buffer acotado residente",
+      "type": "Implementación",
+      "requirements": [
+        "BUF-01",
+        "BUF-03",
+        "BUF-04",
+        "BUF-05",
+        "BUF-06",
+        "BUF-07",
+        "SEM-10",
+        "SEM-11",
+        "SEM-12",
+        "CIC-09",
+        "CIC-10",
+        "CIC-11",
+        "CIC-12"
+      ],
+      "dependencies": [
+        "P08",
+        "P16"
+      ],
+      "questions": [
+        "D-08"
+      ],
+      "result": "Buffer con capacidad, anfitrión y reserva de RAM, tres semáforos inicializados y operaciones de inserción/extracción con costo y modo acordados.",
+      "verification": "Comprobar inicialización 1/0/capacidad, límites, ocupación en el anfitrión y rechazo o tratamiento de falta de RAM. El control de memoria es el mismo que usa P08.",
+      "notes": ""
+    },
+    {
+      "id": "P18",
+      "title": "Productores y consumidores locales",
+      "type": "Implementación",
+      "requirements": [
+        "PRO-10",
+        "PRO-11",
+        "PRO-14",
+        "PRO-15",
+        "PRO-16",
+        "PRO-17",
+        "PRO-18",
+        "PRO-19",
+        "BUF-08",
+        "BUF-09",
+        "BUF-10",
+        "BUF-11",
+        "SEM-02",
+        "SEM-03",
+        "SEM-04",
+        "SEM-13",
+        "SEM-14",
+        "SEM-15",
+        "SEM-16",
+        "SEM-17",
+        "SEM-18",
+        "SEM-19",
+        "SEM-20",
+        "SEM-21",
+        "SEM-22",
+        "SEM-23",
+        "SEM-24",
+        "SEM-25"
+      ],
+      "dependencies": [
+        "P17",
+        "P12"
+      ],
+      "questions": [
+        "D-04",
+        "D-06",
+        "D-13"
+      ],
+      "result": "Ciclo productor/consumidor local, parámetros de trabajo, varios participantes y protocolo completo con bloqueo por lleno/vacío/mutex.",
+      "verification": "Recorrer buffer vacío, lleno, múltiples participantes, finalización normal y deadline en distintas etapas de reserva/inserción/extracción; no perder permisos.",
+      "notes": "Es el paquete más amplio por la integración del protocolo. Si no cabe en un PR revisable, partirlo en productor y consumidor manteniendo una aceptación conjunta del protocolo. No cambiar el checklist."
+    },
+    {
+      "id": "P19",
+      "title": "Acceso remoto con latencia",
+      "type": "Implementación",
+      "requirements": [
+        "BUF-12",
+        "BUF-13",
+        "BUF-14",
+        "BUF-15"
+      ],
+      "dependencies": [
+        "P18"
+      ],
+      "questions": [
+        "D-11",
+        "D-13"
+      ],
+      "result": "El mismo protocolo funciona entre computadores con bloqueo por latencia y acceso al buffer de su anfitrión.",
+      "verification": "Comparar acceso local/remoto para productor y consumidor; comprobar ciclos añadidos, datos y contadores coherentes y vencimiento durante espera remota.",
+      "notes": ""
+    },
+    {
+      "id": "P20",
+      "title": "Eventos y estado observable",
+      "type": "Implementación",
+      "requirements": [
+        "GUI-27",
+        "GUI-28"
+      ],
+      "dependencies": [
+        "P03",
+        "P05"
+      ],
+      "questions": [
+        "D-09"
+      ],
+      "result": "Contrato y registro de eventos/estado que permite explicar decisiones y alimentar vistas y métricas; log de texto.",
+      "verification": "Una traza pequeña identifica ciclo, computador, proceso y decisión sin modificar la lógica de planificación desde los observadores.",
+      "notes": "Empezar temprano con eventos controlados. Cada paquete funcional incorpora luego sus eventos; P26 comprueba que el sistema completo los emita. No esperar hasta el final para definir cómo observar."
+    },
+    {
+      "id": "P21",
+      "title": "Métricas locales y globales",
+      "type": "Implementación",
+      "requirements": [
+        "MET-01",
+        "MET-02",
+        "MET-03",
+        "MET-04",
+        "MET-05",
+        "MET-06",
+        "MET-07",
+        "MET-08",
+        "MET-09",
+        "MET-10",
+        "MET-11",
+        "MET-12",
+        "MET-13"
+      ],
+      "dependencies": [
+        "P12",
+        "P19",
+        "P20"
+      ],
+      "questions": [
+        "D-07",
+        "D-09"
+      ],
+      "result": "Cálculos reproducibles por computador y globales, incluyendo trabajo por buffer y espera en semáforos, con fórmulas documentadas.",
+      "verification": "Una traza corta con resultados calculados manualmente coincide con cada métrica; incluir terminaciones por deadline y muestras sin datos.",
+      "notes": "Las fórmulas y pruebas con trazas pueden prepararse en paralelo desde P01/P20; las dependencias señalan la integración con todas las fuentes reales, no una prohibición de diseñar antes."
+    },
+    {
+      "id": "P22",
+      "title": "Formularios y comandos del usuario",
+      "type": "Implementación",
+      "requirements": [
+        "PRO-01",
+        "PRO-02",
+        "PRO-03",
+        "PRO-04",
+        "PRO-05",
+        "PRO-06",
+        "PRO-07",
+        "PRO-20",
+        "PRO-21",
+        "ARC-03",
+        "BUF-02"
+      ],
+      "dependencies": [
+        "P18",
+        "P20"
+      ],
+      "questions": [
+        "D-02",
+        "D-05",
+        "D-06",
+        "D-08"
+      ],
+      "result": "Entrada de configuración de clúster y alta de procesos/buffers durante la simulación, con asignación y parámetros de cada tipo.",
+      "verification": "Crear cargas válidas desde la GUI y rechazar entradas inválidas sin detener el simulador; comprobar asignación estable sin migración.",
+      "notes": "El boceto del formulario puede avanzar con contratos, antes de integrar la lógica. Reutilizar el computador, creación, memoria y buffers de paquetes anteriores."
+    },
+    {
+      "id": "P23",
+      "title": "Vista por computador",
+      "type": "Implementación",
+      "requirements": [
+        "GUI-01",
+        "GUI-03",
+        "GUI-04",
+        "GUI-05",
+        "GUI-06",
+        "GUI-07",
+        "GUI-08",
+        "GUI-09",
+        "GUI-10",
+        "GUI-11",
+        "GUI-12",
+        "GUI-13",
+        "GUI-14",
+        "GUI-15",
+        "GUI-16",
+        "GUI-17",
+        "GUI-18",
+        "GUI-19",
+        "GUI-20",
+        "GUI-21"
+      ],
+      "dependencies": [
+        "P15",
+        "P20",
+        "P22"
+      ],
+      "questions": [],
+      "result": "Vista de CPU, PCB, colas/motivos, memoria y política con cambios visibles y selector de política.",
+      "verification": "Recorrer un escenario y contrastar cada elemento mostrado con el estado real; comprobar reordenamiento sin reconstruir decisiones dentro de la GUI.",
+      "notes": "Construir visualmente con datos de ejemplo puede adelantarse; el cierre exige conectar las acciones y el estado real."
+    },
+    {
+      "id": "P24",
+      "title": "Vista global y gráfico",
+      "type": "Implementación",
+      "requirements": [
+        "GUI-22",
+        "GUI-23",
+        "GUI-24",
+        "GUI-25",
+        "GUI-26",
+        "GUI-29"
+      ],
+      "dependencies": [
+        "P19",
+        "P21",
+        "P23"
+      ],
+      "questions": [],
+      "result": "Vista global de reloj, buffers y semáforos/esperas, junto con el gráfico común de utilización por computador.",
+      "verification": "Mostrar dos computadores y buffers locales/remotos; contrastar gráfico y valores con muestras de métricas, no con contadores paralelos de la GUI.",
+      "notes": ""
+    },
+    {
+      "id": "P25",
+      "title": "Guardar y cargar configuración",
+      "type": "Implementación",
+      "requirements": [
+        "CFG-03",
+        "CFG-04",
+        "CFG-05",
+        "CFG-06",
+        "CFG-07",
+        "CFG-08",
+        "CFG-09",
+        "CFG-10",
+        "CFG-11",
+        "CFG-12",
+        "CFG-13"
+      ],
+      "dependencies": [
+        "P15",
+        "P19",
+        "P22"
+      ],
+      "questions": [
+        "D-05",
+        "D-06",
+        "D-07",
+        "D-08"
+      ],
+      "result": "Configuración inicial completa desde GUI, serializada en el formato elegido y recuperable para otra simulación.",
+      "verification": "Guardar y recargar una configuración con varios tipos y buffers; comparar atributos y validar archivos/entradas erróneos.",
+      "notes": "Se guarda configuración para futuras simulaciones; no inventar como requisito un checkpoint de ejecución a mitad de ciclo."
+    },
+    {
+      "id": "P26",
+      "title": "Integración y comprobación de requisitos",
+      "type": "Verificación",
+      "requirements": [
+        "ENT-11"
+      ],
+      "dependencies": [
+        "P24",
+        "P25"
+      ],
+      "questions": [
+        "D-01",
+        "D-04",
+        "D-05",
+        "D-06",
+        "D-07",
+        "D-08",
+        "D-09",
+        "D-10",
+        "D-11",
+        "D-12",
+        "D-13",
+        "D-16"
+      ],
+      "result": "Revisión integrada de los escenarios y evidencia vinculada a IDs del checklist, con ejecución real en NetBeans.",
+      "verification": "Cubrir admisión, CPU/E/S, políticas requeridas, bloqueo local/remoto, cancelación por deadline, GUI, métricas y recuperación de configuración. Verificar que no se cumple un ID sólo con una caja dibujada.",
+      "notes": "Las dependencias del grafo llegan transitivamente a los paquetes funcionales. Es una puerta de cierre; cada PR anterior tiene su propia comprobación. No acumular todas las pruebas aquí."
+    },
+    {
+      "id": "P27",
+      "title": "Informe y diagramas finales",
+      "type": "Documentación",
+      "requirements": [
+        "DOC-01",
+        "DOC-02",
+        "DOC-03",
+        "DOC-04",
+        "DOC-05",
+        "DOC-06",
+        "DOC-07",
+        "DOC-08",
+        "DOC-09"
+      ],
+      "dependencies": [
+        "P26"
+      ],
+      "questions": [
+        "D-14"
+      ],
+      "result": "Informe con clases/métodos principales, enums/interfaces, dos UML y conclusiones sustentadas en ejecuciones de las políticas y escenarios locales/remotos.",
+      "verification": "Diagrama y explicación coinciden con la revisión final de código. Los resultados utilizados en conclusiones tienen evidencia.",
+      "notes": "Abrir el borrador desde P03; la dependencia de P26 corresponde al cierre con resultados reales. El diagrama de capas es apoyo, no reemplazo de los UML acordados."
+    },
+    {
+      "id": "P28",
+      "title": "Entrega y preparación de defensa",
+      "type": "Cierre",
+      "requirements": [
+        "ENT-01",
+        "ENT-02",
+        "ENT-03",
+        "ENT-04",
+        "ENT-05",
+        "ENT-06",
+        "ENT-07",
+        "ENT-08",
+        "ENT-09",
+        "ENT-10"
+      ],
+      "dependencies": [
+        "P27"
+      ],
+      "questions": [
+        "D-15"
+      ],
+      "result": "Informe PDF, enlaces y registro de entrega preparados, destinatarios/fecha confirmados y recorrido de defensa por cada integrante.",
+      "verification": "Comprobar contenido entregable, destinatarios, spreadsheet y fecha; cada integrante explica los módulos y puede recorrer un caso.",
+      "notes": "Paquete de cierre: no todo se convierte en un PR de código. Enviar mensajes, registrar entregas o modificar GitHub requiere autorización de la acción concreta; este plan no las ejecuta."
+    }
+  ],
+  "transversals": [
+    {
+      "id": "TR-GIT",
+      "title": "Forma de trabajo en GitHub",
+      "requirements": [
+        "GIT-01",
+        "GIT-02",
+        "GIT-03",
+        "GIT-04",
+        "GIT-05",
+        "GIT-06",
+        "GIT-07",
+        "GIT-08",
+        "GIT-09",
+        "GIT-10",
+        "GIT-11"
+      ],
+      "applies": "Desde el primer cambio y en cada PR; revisar contribución a lo largo del proyecto.",
+      "evidence": "Issue, rama, commits descriptivos y limitados, PR comentado e integración según el flujo acordado; trabajo real equilibrado."
+    },
+    {
+      "id": "TR-EQUIPO",
+      "title": "Tamaño del equipo",
+      "requirements": [
+        "TEC-01"
+      ],
+      "applies": "Organización inicial y si cambia la conformación.",
+      "evidence": "Equipo de hasta tres integrantes."
+    },
+    {
+      "id": "TR-TEC",
+      "title": "Librerías y colecciones permitidas",
+      "requirements": [
+        "TEC-06",
+        "TEC-07"
+      ],
+      "applies": "Cada decisión de dependencia y cada PR con código.",
+      "evidence": "Revisión de dependencias y uso de estructuras; no introducir colecciones prohibidas por comodidad."
+    },
+    {
+      "id": "TR-GUI",
+      "title": "Separación y calidad de interfaz",
+      "requirements": [
+        "ARC-23",
+        "GUI-02",
+        "GUI-30",
+        "GUI-31",
+        "GUI-32"
+      ],
+      "applies": "Contratos desde P03; formularios y vistas en P22–P25; verificación final.",
+      "evidence": "La GUI canaliza solicitudes y observa; validaciones de tipo/rango y entradas inválidas sin interrumpir el sistema."
+    },
+    {
+      "id": "TR-OPC",
+      "title": "Justificación de opciones elegidas",
+      "requirements": [
+        "OPT-01",
+        "OPT-02",
+        "OPT-03"
+      ],
+      "applies": "Sólo si hay asignación automática o interfaces adicionales.",
+      "evidence": "Investigación y justificación de balanceo; explicación de interfaces extra en la defensa. Si no aplica, registrar N/A, no incumplimiento."
+    }
+  ],
+  "topological_order": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P09",
+    "P10",
+    "P11",
+    "P12",
+    "P13",
+    "P14",
+    "P15",
+    "P16",
+    "P17",
+    "P18",
+    "P19",
+    "P20",
+    "P21",
+    "P22",
+    "P23",
+    "P24",
+    "P25",
+    "P26",
+    "P27",
+    "P28"
+  ],
+  "suggested_order": [
+    {
+      "before": "P11",
+      "after": "P13",
+      "reason": "Probar RR antes de EDF puede facilitar la revisión; no es dependencia técnica."
+    }
+  ]
+}

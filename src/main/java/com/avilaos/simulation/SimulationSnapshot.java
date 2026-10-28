@@ -25,7 +25,7 @@ public final class SimulationSnapshot {
         public int size() { return items.length; }
         @SuppressWarnings("unchecked") public T get(int index) { return (T) items[index]; }
     }
-    public record ProcessView(String description, int memoryAddressRegister, int priority, int remainingDeadline) {
+    public record ProcessView(String description, int id, String name, com.avilaos.core.model.ProcessType type, int remainingTime, int memoryAddressRegister, int priority, int remainingDeadline) {
         public String getDescription() { return description; }
         public int getMemoryAddressRegister() { return memoryAddressRegister; }
         public int getPriority() { return priority; }
@@ -99,7 +99,7 @@ public final class SimulationSnapshot {
         Object[] copiedNodes = new Object[nodes.size()];
         for (int i=0; i<nodes.size(); i++) {
             var c=nodes.get(i); var p=c.getCpu().getPCB(); var k=c.getKernel();
-            var cpu=new CpuView(p==null ? null : new ProcessView(p.toString(),p.getMemoryAddressRegister(),p.getPriority(),p.getRemainingDeadline()), c.getCpu().getMode(), c.getCpu().getPC());
+            var cpu=new CpuView(p==null ? null : new ProcessView(p.toString(),p.getId(),p.getName(),p.getType(),p.getRemainingTime(),p.getMemoryAddressRegister(),p.getPriority(),p.getRemainingDeadline()), c.getCpu().getMode(), c.getCpu().getPC());
             var kernel=new KernelView(new QueueView(k.getNewQueue().size(),k.getNewQueue().toString()),
                     new QueueView(k.getReadyQueue().size(),k.getReadyQueue().toString()),
                     new QueueView(k.getBlockedQueue().size(),k.getBlockedQueue().toString()),

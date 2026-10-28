@@ -76,11 +76,18 @@ public class SimulationController implements IClockTickable {
         try {
             Computer c=getComputerById(id);
             if(c==null) throw new IllegalArgumentException("Computador inexistente");
+            if(policy==null) throw new IllegalArgumentException("Política inválida");
+            SchedulingPolicyType anterior = c.getPolitica();
+            if (anterior == policy) return;
             c.setPolitica(policy);
+            logEvent("Política de " + c.getName() + " (ID " + id + ") cambiada de "
+                    + anterior + " a " + policy);
         } finally { StateAccess.exit(); }
     }
     private int nextComputerId = 1;
     private int nextBufferId = 1;
+    // 0: hubo CPU ocupada o no se ha informado; 1: inactivas con pendientes; 2: procesos terminados.
+    private int ultimoEstadoInactividad;
 
     private SimulationController() {
         this.computers = new MyLinkedList<>();
@@ -196,6 +203,7 @@ public class SimulationController implements IClockTickable {
                 new MyQueue<>(),
                 this.clock
         );
+        kernel.setEventListener(this::logEvent);
 
         Computer comp = new Computer(id, cpu, ram, dma, kernel, policy != null ? policy : SchedulingPolicyType.FCFS, quantum);
         this.computers.append(comp);
@@ -460,9 +468,12 @@ public class SimulationController implements IClockTickable {
     // =========================================================================
 
     public void startSimulation() {
-        this.clock.start();
-        logEvent("Simulación iniciada");
-        notifyGUI();
+        StateAccess.enter();
+        try {
+            this.clock.start();
+            logEvent("Simulación iniciada");
+            notifyGUI();
+        } finally { StateAccess.exit(); }
     }
 
     public void pauseSimulation() {
@@ -521,8 +532,8 @@ public class SimulationController implements IClockTickable {
     public void tick(int currentCycle) {
         StateAccess.enter();
         try {
-        StringBuilder tickReport = new StringBuilder("Actividad CPUs -> ");
-        boolean hayActividad = false;
+        StringBuilder tickReport = new StringBuilder("CPU al finalizar ciclo -> ");
+        boolean hayComputadores = false, hayCpuOcupada = false, hayProcesos = false, hayPendientes = false;
 
         for (int i = 0; i < this.computers.size(); i++) {
             Computer comp = this.computers.get(i);
@@ -531,16 +542,30 @@ public class SimulationController implements IClockTickable {
 
                 // Construcción del reporte de log por cada CPU
                 ProcessControlBlock runningPcb = comp.getCpu().getPCB();
+                if (runningPcb != null) hayCpuOcupada = true;
+                var procesos = comp.getKernel().getProcessList();
+                for (int j = 0; j < procesos.size(); j++) {
+                    ProcessControlBlock p = procesos.get(j);
+                    if (p != null) { hayProcesos = true; if (!p.isTerminated()) hayPendientes = true; }
+                }
                 String estadoCpu = (runningPcb != null) ? runningPcb.getName() + " (PC:" + comp.getCpu().getPC() + ")" : "Inactiva";
 
                 tickReport.append("[").append(comp.getName()).append(": ").append(estadoCpu).append("] ");
-                hayActividad = true;
+                hayComputadores = true;
             }
         }
 
-        // Emite el log diario de actividad por tick si hay computadores
-        if (hayActividad) {
+        if (hayCpuOcupada) {
+            ultimoEstadoInactividad = 0;
             logEvent(tickReport.toString().trim());
+        } else if (hayComputadores) {
+            int estado = hayProcesos && !hayPendientes ? 2 : 1;
+            if (estado != ultimoEstadoInactividad) {
+                logEvent(estado == 2
+                        ? "Todos los procesos terminaron; las CPUs están inactivas. El reloj continúa."
+                        : "Todas las CPUs están inactivas; puede haber procesos pendientes. El reloj continúa.");
+                ultimoEstadoInactividad = estado;
+            }
         }
 
         notifyGUI(); // Actualiza visualmente la GUI
@@ -623,6 +648,7 @@ public class SimulationController implements IClockTickable {
         }
         this.nextComputerId = 1;
         this.nextBufferId = 1;
+        this.ultimoEstadoInactividad = 0;
         ProcessControlBlock.resetIdGenerator(1);
 
         logEvent("Simulador reiniciado a estado inicial");

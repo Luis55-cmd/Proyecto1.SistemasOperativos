@@ -484,19 +484,12 @@ panel.add(btnGuardar);
             }
             if (cambio || cantidad == 0 && tarjetas.getComponentCount() == 0) reconstruirPestanas();
             
-            StringBuilder reporteTick = new StringBuilder("Estado CPUs -> ");
-
             for (int i = 0; i < cantidad; i++) {
                 Node c = computadores.get(i);
                 resumenes[i].actualizar(c);
                 detalles[i].actualizar(c);
                 pestanas.setTitleAt(i + 1, c.getName());
 
-                var pcb = c.getCpu().getPCB();
-                // Llama al toString() completo para mostrar todos los registros y tiempos
-                String procesoActual = (pcb != null) ? pcb.toString() : "Inactivo";
-                
-                reporteTick.append(c.getName()).append(": [").append(procesoActual).append("] | ");
             }
             
             reloj.setText("Reloj global · ciclo " + ciclo);
@@ -504,9 +497,6 @@ panel.add(btnGuardar);
             actualizarDetalleColasGlobal();
             actualizarDetalleBuffersGlobal();
 
-            if (controller.isRunning() && !controller.isPaused() && cantidad > 0) {
-                agregarLog(reporteTick.toString());
-            }
             if (panelMetricas != null) {
                 panelMetricas.actualizarMetricas();
             }
@@ -764,12 +754,17 @@ panel.add(btnGuardar);
             if (p == null) {
                 proceso.setText("Sin proceso");
             } else {
-                String textoFormateado = p.toString()
-                        .replace("PCB{", "PCB { ")
-                        .replace(", type=", ",<br>type=")
-                        .replace(", remDeadline=", ",<br>remDeadline=")
-                        .replace("}", " }");
-                proceso.setText("<html>" + textoFormateado + "</html>");
+                String nombreSeguro = p.name().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                String tipo = switch (p.type()) {
+                    case CPU_BOUND -> "CPU";
+                    case IO_BOUND -> "E/S";
+                    case PRODUCER -> "Productor";
+                    case CONSUMER -> "Consumidor";
+                };
+                proceso.setText("<html>" + nombreSeguro + " · ID " + p.id() + " · " + tipo
+                        + "<br>PC: " + c.getCpu().getPC() + " · Prioridad: " + p.getPriority()
+                        + "<br>Tiempo restante: " + p.remainingTime() + " · Deadline restante: "
+                        + p.getRemainingDeadline() + "</html>");
             }
             
             if (detalle) registros.setText(p == null 

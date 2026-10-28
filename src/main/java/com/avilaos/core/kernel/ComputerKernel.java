@@ -31,6 +31,21 @@ public class ComputerKernel {
 
     private IScheduler activeScheduler;
     private SchedulingPolicyType currentPolicy;
+    private java.util.function.Consumer<String> eventListener;
+
+    public void setEventListener(java.util.function.Consumer<String> listener) { this.eventListener = listener; }
+    private void event(String message) { if (eventListener != null) eventListener.accept(message); }
+    private String proceso(ProcessControlBlock p) { return p.getName() + " (ID " + p.getId() + ", computador " + p.getComputerId() + ")"; }
+    private String motivo(ProcessControlBlock p) {
+        return switch (p.getBlockReason()) {
+            case WAITING_MUTEX -> "mutex del buffer " + p.getTargetBufferId();
+            case WAITING_EMPTY_BUFFER -> "buffer " + p.getTargetBufferId() + " sin elementos (semáforo llenos)";
+            case WAITING_FULL_BUFFER -> "buffer " + p.getTargetBufferId() + " sin espacios (semáforo vacíos)";
+            case NETWORK_LATENCY -> "latencia de red para buffer " + p.getTargetBufferId();
+            case WAITING_IO -> "espera de E/S";
+            default -> "motivo no especificado";
+        };
+    }
 
     public ComputerKernel(MyLinkedList<ProcessControlBlock> processList,
                           MyQueue<ProcessControlBlock> blockedQueue,
@@ -93,6 +108,7 @@ public class ComputerKernel {
                 nextNew.setState(ProcessState.LISTO);
                 nextNew.setBlockReason(BlockReason.NONE);
                 this.readyQueue.enqueue(nextNew);
+                event(proceso(nextNew) + " admitido desde nuevos tras liberarse RAM");
                 admittedCount++;
             } else {
                 // FIFO estricto: si el primer proceso en espera no cabe, se detiene la admisión
@@ -212,6 +228,10 @@ public class ComputerKernel {
         ProcessControlBlock next = scheduler.scheduleNext(this.readyQueue, currentRunning);
 
         if (next != null) {
+            if (next != currentRunning) {
+                if (currentRunning != null) event(com.getName() + " desaloja " + proceso(currentRunning));
+                event(com.getName() + " selecciona " + proceso(next) + " (política " + com.getPolitica() + ")");
+            }
             // Guardar contexto del proceso desalojado si fue reemplazado por otro proceso
             if (currentRunning != null && currentRunning != next) {
                 if (com.getCpu() != null) {
@@ -297,6 +317,8 @@ public class ComputerKernel {
             return;
         }
 
+        event(proceso(p) + (p.getRemainingDeadline() <= 0 ? " terminó por vencimiento de deadline" : " terminó normalmente"));
+
         if (com != null) {
             com.registrarTerminacion(p, clock != null ? clock.getCycleCounter() : Math.max(0, p.getCompletionCycle()));
         }
@@ -371,11 +393,13 @@ public class ComputerKernel {
         if (p == null || p.getState() == ProcessState.SALIENTE) {
             return;
         }
+        boolean estabaBloqueado = p.getState() == ProcessState.BLOQUEADO;
         this.blockedQueue.removeElement(p);
         p.setState(ProcessState.LISTO);
         p.setBlockReason(BlockReason.NONE);
         this.readyQueue.removeElement(p); // Prevenir duplicados
         this.readyQueue.enqueue(p);
+        if (estabaBloqueado) event(proceso(p) + " despertó y pasó a listos");
     }
 
     public boolean placeBufferRAM(Buffer buffer, Computer com) {
@@ -503,6 +527,7 @@ public class ComputerKernel {
                     if (!continueRunning) {
                         if (currentRunning.getState() == ProcessState.BLOQUEADO) {
                             blockProcess(comp, currentRunning);
+                            event(proceso(currentRunning) + " se bloqueó: " + motivo(currentRunning));
                         }
                     }
                 } else {
@@ -521,6 +546,7 @@ public class ComputerKernel {
                         currentRunning.setIoCycleCountdown(currentRunning.getIoDuration());
                         blockProcess(comp, currentRunning);
                         currentRunning.setBlockReason(BlockReason.WAITING_IO);
+                        event(proceso(currentRunning) + " se bloqueó: " + motivo(currentRunning));
                     } else {
                         currentRunning.setIoCycleCountdown(countdown);
                     }
@@ -623,6 +649,7 @@ public class ComputerKernel {
                 // El proceso fue despertado por wakeUpProcess: moverlo a readyQueue
                 this.readyQueue.removeElement(p); // Prevenir duplicados
                 this.readyQueue.enqueue(p);
+                event(proceso(p) + " despertó y pasó a listos");
             } else {
                 // El proceso sigue bloqueado: volver a encolarlo
                 this.blockedQueue.enqueue(p);

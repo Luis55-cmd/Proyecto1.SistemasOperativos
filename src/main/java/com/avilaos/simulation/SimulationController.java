@@ -623,6 +623,7 @@ public class SimulationController implements IClockTickable {
         }
         this.nextComputerId = 1;
         this.nextBufferId = 1;
+        ProcessControlBlock.resetIdGenerator(1);
 
         logEvent("Simulador reiniciado a estado inicial");
         notifyGUI();

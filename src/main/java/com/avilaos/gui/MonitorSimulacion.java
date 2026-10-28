@@ -275,6 +275,22 @@ panel.add(btnGuardar);
             }
         });
         panel.add(btnLog);
+        JButton btnReiniciar = accion("Reiniciar todo", false);
+        btnReiniciar.addActionListener(e -> {
+            btnReiniciar.setEnabled(false);
+            areaLog.setText("");
+            GuiCommands.submit(() -> {
+                controller.reset();
+                return true;
+            }, ok -> {
+                btnReiniciar.setEnabled(true);
+                actualizarVista();
+            }, error -> {
+                btnReiniciar.setEnabled(true);
+                controller.logEvent("Error al reiniciar: " + error.getMessage());
+            });
+        });
+        panel.add(btnReiniciar);
         return panel;
     }
 

@@ -31,6 +31,7 @@ public class Computer {
     private int procesosCompletados = 0;
     private int totalTiempoRespuesta = 0;
     private int deadlinesCumplidos = 0;
+    private int totalTiempoEspera = 0;
 
     public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica) {
         this(id, cpu, ram, dma, kernel, politica, 3);
@@ -66,12 +67,14 @@ public class Computer {
         if (!completo) return;
         procesosCompletados++;
         totalTiempoRespuesta += Math.max(0, pcb.getStartCycle() - pcb.getArrivalCycle());
+        totalTiempoEspera += pcb.getWaitingTime();
         if (pcb.getRemainingDeadline() > 0) deadlinesCumplidos++;
     }
 
     public int getCiclosActivos() { return ciclosActivos; }
     public int getProcesosCompletados() { return procesosCompletados; }
     public int getTotalTiempoRespuesta() { return totalTiempoRespuesta; }
+    public int getTotalTiempoEspera() { return totalTiempoEspera; }
     public int getDeadlinesCumplidos() { return deadlinesCumplidos; }
 
     // --- Métodos Originales ---

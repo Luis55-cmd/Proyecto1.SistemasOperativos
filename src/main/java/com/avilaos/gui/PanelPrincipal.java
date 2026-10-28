@@ -2,6 +2,7 @@ package com.avilaos.gui;
 
 import java.awt.*;
 import com.avilaos.hardware.Computer;
+import com.avilaos.simulation.SimulationSnapshot;
 import com.avilaos.simulation.SimulationController;
 import com.avilaos.sync.Buffer;
 import com.avilaos.core.model.SchedulingPolicyType;
@@ -104,7 +105,7 @@ public class PanelPrincipal extends JPanel {
         // --- CONEXIÓN AL OBSERVER ---
         // Se actualizan las tablas automáticamente cuando el SimulationController cambia
         controller.addGUIListener(() -> {
-            synchronized (controller) { metricas.actualizarMetricas(); }
+            metricas.actualizarMetricas();
             actualizarListaComputadores();
             actualizarListaBuffers();
             actualizarOpcionesComputadoresBuffer();
@@ -116,7 +117,7 @@ public class PanelPrincipal extends JPanel {
     public void mostrarPanel(Destino destino) {
         if (destino == null) throw new IllegalArgumentException("Destino de navegación requerido");
         if (destino == Destino.METRICAS) {
-            synchronized (controller) { metricas.actualizarMetricas(); }
+            metricas.actualizarMetricas();
         }
         if (destino == Destino.PROCESO) editorProceso.actualizarListas();
         if (destino == Destino.SIMULACION) monitor.actualizarVista();
@@ -301,10 +302,11 @@ public class PanelPrincipal extends JPanel {
     }
 
     private void actualizarOpcionesComputadoresBuffer() {
+        var view = controller.snapshot();
         OpcionComputador seleccion = (OpcionComputador) comboComputadorBuffer.getSelectedItem();
         comboComputadorBuffer.removeAllItems();
-        for (int i = 0; i < controller.getComputers().size(); i++) {
-            Computer c = controller.getComputers().get(i);
+        for (int i = 0; i < view.computers.size(); i++) {
+            var c = view.computers.get(i);
             OpcionComputador op = new OpcionComputador(c.getId(), c.getName());
             comboComputadorBuffer.addItem(op);
             if (seleccion != null && seleccion.id() == c.getId()) {
@@ -324,14 +326,12 @@ public class PanelPrincipal extends JPanel {
             spinnerAlmacenamiento.commitEdit();
             
             int capacidad = (Integer) spinnerAlmacenamiento.getValue();
-            Buffer nuevoBuffer = controller.createBuffer(compSeleccionado.id(), capacidad);
-            
-            if (nuevoBuffer != null) {
-                resultadoBuffer.setText("Buffer ID " + nuevoBuffer.getId() + " creado exitosamente en Host " + compSeleccionado.id());
-                // No necesitamos añadir a la tabla manualmente, el Observer llamará a actualizarListaBuffers()
-            } else {
-                resultadoBuffer.setText("Error al crear. ¿Tiene RAM suficiente el Host " + compSeleccionado.id() + "?");
-            }
+            resultadoBuffer.setText("Creando buffer…");
+            GuiRequest.model(controller, () -> {
+                Buffer b=controller.createBuffer(compSeleccionado.id(), capacidad);
+                return b==null ? "Error: RAM insuficiente o anfitrión inválido" : "Buffer ID " + b.getId() + " creado en Host " + compSeleccionado.id();
+            }, resultadoBuffer::setText, error -> resultadoBuffer.setText(error.getMessage()));
+
             
         } catch (Exception ex) {
             resultadoBuffer.setText("Error al crear el buffer: " + ex.getMessage());
@@ -339,9 +339,10 @@ public class PanelPrincipal extends JPanel {
     }
     
     private void actualizarListaBuffers() {
+        var view = controller.snapshot();
         buffersVisibles.setRowCount(0);
-        for (int i = 0; i < controller.getBuffers().size(); i++) {
-            Buffer b = controller.getBuffers().get(i);
+        for (int i = 0; i < view.buffers.size(); i++) {
+            var b = view.buffers.get(i);
             buffersVisibles.addRow(new Object[]{
                 b.getId(), 
                 b.getIdComp(),       // Computador Host
@@ -392,24 +393,25 @@ public class PanelPrincipal extends JPanel {
             resultadoComputador.setText("Escribe un nombre y selecciona la RAM.");
             return;
         }
-        Computer creado;
-        try {
-            int quantum = (Integer) spinnerQuantum.getValue();
-            creado = controller.createComputer(nombreComputador.getText(), ram, politicaSeleccionada, quantum);
-        } catch (IllegalArgumentException error) {
-            nombreComputador.setBorder(BorderFactory.createLineBorder(new Color(166, 44, 38), 2));
+        String name=nombreComputador.getText();
+        int quantum=(Integer)spinnerQuantum.getValue();
+        SchedulingPolicyType policy=politicaSeleccionada;
+        resultadoComputador.setText("Creando computador…");
+        GuiRequest.model(controller, () -> {
+            Computer creado=controller.createComputer(name,ram,policy,quantum);
+            return "Creado: " + creado.getName() + " · ID " + creado.getId();
+        }, resultadoComputador::setText, error -> {
+            nombreComputador.setBorder(BorderFactory.createLineBorder(new Color(166,44,38),2));
             errorNombre.setText(error.getMessage());
             resultadoComputador.setText("No se creó otro computador.");
-            nombreComputador.requestFocusInWindow();
-            return;
-        }
-        resultadoComputador.setText("Creado: " + creado.getName() + " · ID " + creado.getId());
+        });
     }
 
     private void actualizarListaComputadores() {
+        var view = controller.snapshot();
         computadoresVisibles.setRowCount(0);
-        for (int i = 0; i < controller.getComputers().size(); i++) {
-            Computer c = controller.getComputers().get(i);
+        for (int i = 0; i < view.computers.size(); i++) {
+            var c = view.computers.get(i);
             String polStr = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN)
                     ? "Round Robin (Q: " + c.getQuantum() + ")"
                     : c.getPolitica().toString();

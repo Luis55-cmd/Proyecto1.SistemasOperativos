@@ -66,7 +66,7 @@ public class EditorProceso extends JPanel {
         camposFila1.add(campo("Nombre del proceso", campoNombre));
         camposFila1.add(campo("Computador destino", destino));
         camposFila1.add(campo("Tipo de Proceso", comboTipoProceso));
-        camposFila1.add(campo("Prioridad (1-10)", spinnerPrioridad));
+        camposFila1.add(campo("Prioridad · 1 baja / 10 alta", spinnerPrioridad));
         
         // Fila 2: Límite temporal (Deadline). La memoria RAM se deriva del conjunto de instrucciones (1 inst = 1 RAM)
         JPanel camposFila2 = new JPanel(new GridLayout(1, 4, 16, 0));
@@ -185,22 +185,23 @@ public class EditorProceso extends JPanel {
     /** Extrae los computadores y buffers disponibles directamente del controlador */
     public void actualizarListas() {
         SimulationController ctrl = SimulationController.getInstance();
+        var view = ctrl.snapshot();
         
         // 1. Actualizar Computadores
         Integer compSeleccionado = getComputadorDestinoId();
         destino.removeAllItems();
-        if (ctrl.getComputers().size() > 0) {
+        for (int i = 0; i < view.computers.size(); i++) {
+            var c = view.computers.get(i);
+            DestinoComputador opcion = new DestinoComputador(c.getId(), c.getName());
+            destino.addItem(opcion);
+            if (compSeleccionado != null && compSeleccionado == c.getId()) destino.setSelectedItem(opcion);
+        }
+        if (view.computers.size() > 0) {
             DestinoComputador opcionAuto = new DestinoComputador(-1, "⚡ Automático (Sender-Initiated)");
             destino.addItem(opcionAuto);
             if (compSeleccionado != null && compSeleccionado == -1) {
                 destino.setSelectedItem(opcionAuto);
             }
-        }
-        for (int i = 0; i < ctrl.getComputers().size(); i++) {
-            Computer c = ctrl.getComputers().get(i);
-            DestinoComputador opcion = new DestinoComputador(c.getId(), c.getName());
-            destino.addItem(opcion);
-            if (compSeleccionado != null && compSeleccionado == c.getId()) destino.setSelectedItem(opcion);
         }
         boolean hayComputadores = destino.getItemCount() > 0;
         destino.setEnabled(hayComputadores);
@@ -211,8 +212,8 @@ public class EditorProceso extends JPanel {
         comboBufferId.removeAllItems();
         boolean contieneBuffer = false;
         
-        for (int i = 0; i < ctrl.getBuffers().size(); i++) {
-            Buffer b = ctrl.getBuffers().get(i);
+        for (int i = 0; i < view.buffers.size(); i++) {
+            var b = view.buffers.get(i);
             String idStr = String.valueOf(b.getId());
             comboBufferId.addItem(idStr);
             if (bufferSeleccionado != null && bufferSeleccionado.equals(idStr)) {
@@ -282,7 +283,10 @@ public class EditorProceso extends JPanel {
             spinnerDeadline.commitEdit();
             spinnerCiclosOperacion.commitEdit();
             spinnerElementos.commitEdit();
-        } catch (Exception ignored) {}
+        } catch (java.text.ParseException error) {
+            mensaje.setText("Error: Revisa los valores numéricos antes de crear el proceso.");
+            return;
+        }
         
         int prioridad = (Integer) spinnerPrioridad.getValue();
         int deadline = (Integer) spinnerDeadline.getValue();
@@ -330,66 +334,25 @@ public class EditorProceso extends JPanel {
         }
 
         SimulationController controller = SimulationController.getInstance();
-        Computer compDestino;
-        if (idComputador == -1) {
-            compDestino = controller.selectSenderInitiatedComputer(memoria);
-            if (compDestino == null) {
-                mensaje.setText("Error: Ningún computador tiene suficiente RAM total (" + memoria + ") para alojar este proceso.");
-                return;
-            }
-            idComputador = compDestino.getId();
-        } else {
-            compDestino = controller.getComputerById(idComputador);
-            if (compDestino == null) {
-                mensaje.setText("Error: El computador destino seleccionado no existe.");
-                return;
-            }
-        }
-
-        int ramTotal = compDestino.getMemoryManager().getTotalMemory();
-        if (memoria > ramTotal) {
-            mensaje.setText("Error: El programa (" + memoria + " instrucciones/RAM) supera la RAM total (" + ramTotal + ") de " + compDestino.getName() + ".");
-            return;
-        }
-
-        if (deadline <= 0) {
-            mensaje.setText("Error: El deadline debe ser mayor a 0.");
-            return;
-        }
-
-        ProcessControlBlock nuevoPCB;
-
-        if (tipo == ProcessType.PRODUCER || tipo == ProcessType.CONSUMER) {
-            String targetBuffer = (String) comboBufferId.getSelectedItem();
-            int ciclosOp = (Integer) spinnerCiclosOperacion.getValue();
-            int reqElem = (Integer) spinnerElementos.getValue();
-            
-            nuevoPCB = controller.createProcess(
-                    nombre, idComputador, tipo, totalTicks, memoria, 
-                    prioridad, deadline, targetBuffer, ciclosOp, reqElem
-            );
-        } else if (tipo == ProcessType.IO_BOUND) {
-            int ioInterval = (Integer) spinnerIoInterval.getValue();
-            int ioDuration = (Integer) spinnerIoDuration.getValue();
-            nuevoPCB = controller.createProcess(
-                    nombre, idComputador, tipo, totalTicks, memoria,
-                    prioridad, deadline, ioInterval, ioDuration
-            );
-        } else {
-            nuevoPCB = controller.createProcess(
-                    nombre, idComputador, tipo, totalTicks, memoria, 
-                    prioridad, deadline
-            );
-        }
-
-        if (nuevoPCB != null) {
-            String estadoMsg = (nuevoPCB.getState() == ProcessState.LISTO) 
-                    ? "admitido a LISTOS" 
-                    : "en cola de NUEVOS (esperando memoria)";
-            mensaje.setText("¡Proceso '" + nombre + "' (" + estadoMsg + ") en " + compDestino.getName() + "!");
-        } else {
-            mensaje.setText("Error: No se pudo inyectar el proceso en el simulador.");
-        }
+        final int destination=idComputador;
+        final int instructions=totalTicks;
+        final int memory=memoria;
+        final String target=(String)comboBufferId.getSelectedItem();
+        final int cycles=(Integer)spinnerCiclosOperacion.getValue();
+        final int elements=(Integer)spinnerElementos.getValue();
+        final int ioInterval=(Integer)spinnerIoInterval.getValue();
+        final int ioDuration=(Integer)spinnerIoDuration.getValue();
+        botonCrear.setEnabled(false);
+        mensaje.setText("Creando proceso…");
+        GuiRequest.model(controller, () -> {
+            ProcessControlBlock pcb;
+            if(tipo==ProcessType.PRODUCER || tipo==ProcessType.CONSUMER)
+                pcb=controller.createProcess(nombre,destination,tipo,instructions,memory,prioridad,deadline,target,cycles,elements);
+            else pcb=controller.createProcess(nombre,destination,tipo,instructions,memory,prioridad,deadline,ioInterval,ioDuration);
+            if(pcb==null) return "Error: no se pudo crear el proceso; revisa los parámetros y el log.";
+            return "Proceso '" + nombre + "' creado: " + pcb.getState() + " en computador " + pcb.getComputerId();
+        }, result -> { mensaje.setText(result); botonCrear.setEnabled(true); },
+           error -> { mensaje.setText(error.getMessage()); botonCrear.setEnabled(true); });
     }
 
     private class ModeloBloques extends AbstractTableModel {

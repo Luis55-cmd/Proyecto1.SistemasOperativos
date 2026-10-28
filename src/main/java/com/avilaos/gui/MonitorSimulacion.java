@@ -1,4 +1,8 @@
 package com.avilaos.gui;
+import com.avilaos.simulation.SimulationSnapshot;
+import com.avilaos.simulation.SimulationSnapshot.Node;
+import com.avilaos.concurrency.GuiCommands;
+import com.avilaos.concurrency.StateAccess;
 
 import com.avilaos.hardware.Computer;
 import com.avilaos.core.model.BlockReason;
@@ -19,6 +23,7 @@ import static com.avilaos.gui.PanelPrincipal.*;
 /** Monitor de lectura interactivo. Se actualiza vía Observer desde el SimulationController. */
 public final class MonitorSimulacion extends JPanel {
     private final SimulationController controller;
+    private SimulationSnapshot view;
     private final JTabbedPane pestanas = new JTabbedPane(JTabbedPane.BOTTOM, JTabbedPane.SCROLL_TAB_LAYOUT);
     private final JPanel tarjetas = new JPanel(new GridLayout(0, 2, 16, 16));
     private final JLabel reloj = texto("Reloj global · ciclo 0", 20, ACENTO, true);
@@ -57,6 +62,7 @@ public final class MonitorSimulacion extends JPanel {
     public MonitorSimulacion(SimulationController controller, Runnable irAComputadores) {
         super(new BorderLayout(0, 0));
         this.controller = controller;
+        this.view=controller.snapshot();
         setBackground(FONDO);
         
         JPanel contenedorPrincipal = new ScrollablePanel(new BorderLayout(0, 20));
@@ -170,8 +176,7 @@ public final class MonitorSimulacion extends JPanel {
         add(scrollGlobal, BorderLayout.CENTER);
         
         this.controller.addLogListener(mensaje -> {
-            String timestamp = String.format("[Ciclo %d] ", controller.getCurrentCycle());
-            areaLog.append(timestamp + mensaje + "\n");
+            areaLog.append(mensaje + "\n");
         });
 
         this.controller.addGUIListener(() -> {
@@ -235,7 +240,10 @@ private String extraerValorString(String texto, String clave, String defecto) {
             archivo = new File(archivo.getAbsolutePath() + ".json");
         }
 
-        guardarEstado(archivo);
+        File destino = archivo;
+        btnGuardar.setEnabled(false);
+        GuiCommands.submit(() -> guardarEstado(destino), ok -> btnGuardar.setEnabled(true),
+                error -> { btnGuardar.setEnabled(true); controller.logEvent(error.getMessage()); });
     }
 });
           btnCargar.addActionListener(e -> {
@@ -245,7 +253,9 @@ private String extraerValorString(String texto, String clave, String defecto) {
     if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
         File archivo = chooser.getSelectedFile();
 
-        cargarEstado(archivo);
+        btnCargar.setEnabled(false);
+        GuiCommands.submit(() -> cargarEstado(archivo), ok -> btnCargar.setEnabled(true),
+                error -> { btnCargar.setEnabled(true); controller.logEvent(error.getMessage()); });
     }
 });
 panel.add(btnGuardar);
@@ -255,13 +265,13 @@ panel.add(btnGuardar);
             JFileChooser chooser = new JFileChooser();
             chooser.setSelectedFile(new File("avilaos-ciclo-" + controller.getCurrentCycle() + ".log"));
             if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-                try {
-                    java.nio.file.Files.writeString(chooser.getSelectedFile().toPath(), areaLog.getText(),
-                            java.nio.charset.StandardCharsets.UTF_8);
-                    controller.logEvent("Log exportado: " + chooser.getSelectedFile().getName());
-                } catch (java.io.IOException ex) {
-                    controller.logEvent("Error al exportar log: " + ex.getMessage());
-                }
+                File destino = chooser.getSelectedFile();
+                String texto = areaLog.getText();
+                GuiCommands.submit(() -> {
+                    java.nio.file.Files.writeString(destino.toPath(), texto, java.nio.charset.StandardCharsets.UTF_8);
+                    return destino.getName();
+                }, nombre -> controller.logEvent("Log exportado: " + nombre),
+                        error -> controller.logEvent("Error al exportar log: " + error.getMessage()));
             }
         });
         panel.add(btnLog);
@@ -270,7 +280,11 @@ panel.add(btnGuardar);
 
     /** Ruta compartida con Guardar Estado; no abre el selector de archivos. */
     boolean guardarEstado(File archivo) {
-        try (java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.FileWriter(archivo))) {
+        try {
+            java.io.StringWriter copia = new java.io.StringWriter();
+            java.io.PrintWriter writer = new java.io.PrintWriter(copia);
+            StateAccess.enter();
+            try {
             writer.println("{");
             writer.println("  \"currentCycle\": " + controller.getCurrentCycle() + ",");
             writer.println("  \"cycleDurationMs\": " + controller.getCycleDurationMs() + ",");
@@ -339,6 +353,8 @@ panel.add(btnGuardar);
             writer.println("  ]");
             writer.println("}");
             
+            } finally { StateAccess.exit(); }
+            java.nio.file.Files.writeString(archivo.toPath(), copia.toString(), java.nio.charset.StandardCharsets.UTF_8);
             controller.logEvent("Configuración guardada exitosamente en JSON: " + archivo.getName());
             return true;
         } catch (java.io.IOException ex) {
@@ -358,6 +374,8 @@ panel.add(btnGuardar);
 
             String json = sb.toString();
             
+            StateAccess.enter();
+            try {
             // Reiniciar el estado actual del simulador antes de restaurar
             controller.reset();
 
@@ -485,6 +503,7 @@ panel.add(btnGuardar);
                 }
             }
 
+            } finally { StateAccess.exit(); }
             controller.logEvent("Configuración JSON cargada exitosamente desde: " + archivo.getName());
             return true;
         } catch (Exception ex) {
@@ -504,8 +523,7 @@ panel.add(btnGuardar);
 
     public void agregarLog(String mensaje) {
         SwingUtilities.invokeLater(() -> {
-            String timestamp = String.format("[Ciclo %d] ", controller.getCurrentCycle());
-            areaLog.append(timestamp + mensaje + "\n");
+            areaLog.append(mensaje + "\n");
         });
     }
 
@@ -515,34 +533,12 @@ panel.add(btnGuardar);
         controles.setAlignmentX(LEFT_ALIGNMENT);
         intervalo.setSelectedItem(controller.getCycleDurationMs());
         intervalo.setPreferredSize(new Dimension(90, 36));
-        
-        iniciar.addActionListener(e -> {
-            if (controller.getComputers().size() < 2) {
-                JOptionPane.showMessageDialog(this,
-                        "Debes crear al menos dos computadores antes de iniciar la simulación.",
-                        "Computadores insuficientes",
-                        JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-            controller.startSimulation();
-        });
-        
-        pausar.addActionListener(e -> { if (controller.isRunning() && !controller.isPaused()) controller.pauseSimulation(); });
-        
-        paso.addActionListener(e -> {
-            if (controller.getComputers().size() < 2) {
-                JOptionPane.showMessageDialog(this,
-                        "Debes crear al menos dos computadores para avanzar paso a paso.",
-                        "Computadores insuficientes",
-                        JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-            if (!controller.isRunning() || controller.isPaused()) controller.stepSimulation();
-        });
-        
+        iniciar.addActionListener(e -> { GuiRequest.control(controller, controller::startSimulation); });
+        pausar.addActionListener(e -> { GuiRequest.control(controller, controller::pauseSimulation); });
+        paso.addActionListener(e -> { GuiRequest.control(controller, controller::stepSimulation); });
         aplicar.addActionListener(e -> {
             Integer ms = (Integer) intervalo.getSelectedItem();
-            if (ms != null) { controller.setCycleDurationMs(ms); actualizarControlesReloj(); }
+            if (ms != null) { GuiRequest.control(controller, () -> controller.setCycleDurationMs(ms)); }
         });
         
         intervalo.addActionListener(e -> actualizarControlesReloj());
@@ -567,13 +563,15 @@ panel.add(btnGuardar);
     }
 
     public void actualizarVista() {
-        int ciclo = controller.getCurrentCycle();
+        long previousSession=view.session;
+        view=controller.snapshot();
+        int ciclo = view.cycle;
         String marcha = !controller.isRunning() ? "Detenida" : controller.isPaused() ? "Pausada" : "En ejecución";
         actualizarControlesReloj();
-        synchronized (controller) {
-            MyLinkedList<Computer> computadores = controller.getComputers();
+        {
+            var computadores = view.computers;
             int cantidad = computadores.size();
-            boolean cambio = cantidad != ids.length;
+            boolean cambio = cantidad != ids.length || previousSession != view.session;
             if (!cambio) {
                 for (int i = 0; i < cantidad; i++) {
                     if (ids[i] != computadores.get(i).getId()) { cambio = true; break; }
@@ -584,12 +582,12 @@ panel.add(btnGuardar);
             StringBuilder reporteTick = new StringBuilder("Estado CPUs -> ");
 
             for (int i = 0; i < cantidad; i++) {
-                Computer c = computadores.get(i);
+                Node c = computadores.get(i);
                 resumenes[i].actualizar(c);
                 detalles[i].actualizar(c);
                 pestanas.setTitleAt(i + 1, c.getName());
 
-                ProcessControlBlock pcb = c.getCpu().getPCB();
+                var pcb = c.getCpu().getPCB();
                 // Llama al toString() completo para mostrar todos los registros y tiempos
                 String procesoActual = (pcb != null) ? pcb.toString() : "Inactivo";
                 
@@ -612,12 +610,12 @@ panel.add(btnGuardar);
 
     private void actualizarDetalleBuffersGlobal() {
         modeloBuffers.setRowCount(0);
-        MyLinkedList<Buffer> buffers = controller.getBuffers();
+        var buffers = view.buffers;
         for (int i = 0; i < buffers.size(); i++) {
-            Buffer b = buffers.get(i);
+            var b = buffers.get(i);
             String nombre = "Buffer " + b.getId();
-            int elementos = b.getStorage();
-            int capacidad = b.getSizeInMemory();
+            int elementos = b.getDatos().size();
+            int capacidad = b.getStorage();
             
             String semaforos = String.format("M:%d, L:%d, V:%d", 
                 b.getMutex().availablePermits(), 
@@ -632,7 +630,7 @@ panel.add(btnGuardar);
     
     private void actualizarDetalleColasGlobal() {
     int seleccion = pestanas.getSelectedIndex();
-    MyLinkedList<Computer> computadores = controller.getComputers();
+    var computadores = view.computers;
     int cantidad = computadores.size();
     
     if (cantidad == 0 || pestanas.getSelectedComponent() == panelMetricas) {
@@ -644,7 +642,7 @@ panel.add(btnGuardar);
     int compIndex = seleccion > 0 ? seleccion - 1 : 0;
     
     if (compIndex < cantidad) {
-        Computer c = computadores.get(compIndex);
+        Node c = computadores.get(compIndex);
         var kernel = c.getKernel();
         
         String[] nuevos = extraerElementos(kernel.getNewQueue().toString());
@@ -695,7 +693,7 @@ panel.add(btnGuardar);
         while (pestanas.getTabCount() > 1) pestanas.removeTabAt(1);
         tarjetas.removeAll();
         
-        MyLinkedList<Computer> computadores = controller.getComputers();
+        var computadores = view.computers;
         int cantidad = computadores.size();
         ids = new int[cantidad];
         resumenes = new VistaComputador[cantidad];
@@ -703,10 +701,10 @@ panel.add(btnGuardar);
         
         if (cantidad == 0) tarjetas.add(vacio);
         for (int i = 0; i < cantidad; i++) {
-            Computer c = computadores.get(i);
+            Node c = computadores.get(i);
             ids[i] = c.getId();
-            resumenes[i] = new VistaComputador(c, false);
-            detalles[i] = new VistaComputador(c, true);
+            resumenes[i] = new VistaComputador(c, false, view.session);
+            detalles[i] = new VistaComputador(c, true, view.session);
             int indice = i + 1;
             JButton abrir = accion("Ver detalle →", false);
             abrir.addActionListener(e -> pestanas.setSelectedIndex(indice));
@@ -732,7 +730,8 @@ panel.add(btnGuardar);
     }
 
     private static final class VistaComputador extends JPanel {
-        private final Computer computador;
+        private final int computerId;
+        private final long session;
         private final JLabel nombre = texto("", 20, TINTA, true);
         private final JComboBox<SchedulingPolicyType> comboPolitica = new JComboBox<>(SchedulingPolicyType.values());
         private final JLabel labelQuantum = texto("Quantum: ", 13, GRIS, false);
@@ -745,8 +744,9 @@ panel.add(btnGuardar);
         private final boolean detalle;
         private boolean actualizandoVista = false;
 
-        VistaComputador(Computer c, boolean detalle) {
-            this.computador = c;
+        VistaComputador(Node c, boolean detalle, long session) {
+            this.computerId = c.getId();
+            this.session=session;
             this.detalle = detalle;
             
             // Usamos BorderLayout para empaquetar el contenido arriba sin deformaciones
@@ -771,8 +771,9 @@ panel.add(btnGuardar);
             comboPolitica.setPreferredSize(new Dimension(160, 26));
             comboPolitica.addActionListener(e -> {
                 SchedulingPolicyType seleccion = (SchedulingPolicyType) comboPolitica.getSelectedItem();
-                if (seleccion != null && seleccion != computador.getPolitica()) {
-                    computador.setPolitica(seleccion);
+                if (!actualizandoVista && seleccion != null) {
+                    var ctrl=SimulationController.getInstance();
+                    GuiRequest.control(ctrl, () -> { ctrl.requireSession(session); ctrl.setComputerPolicy(computerId,seleccion); });
                     boolean esRR = (seleccion == SchedulingPolicyType.ROUND_ROBIN);
                     labelQuantum.setVisible(esRR);
                     spinnerQuantum.setVisible(esRR);
@@ -791,9 +792,8 @@ panel.add(btnGuardar);
             spinnerQuantum.addChangeListener(e -> {
                 if (!actualizandoVista) {
                     int val = (Integer) spinnerQuantum.getValue();
-                    if (val != computador.getQuantum()) {
-                        computador.setQuantum(val);
-                    }
+                    var ctrl=SimulationController.getInstance();
+                    GuiRequest.control(ctrl, () -> { ctrl.requireSession(session); ctrl.setComputerQuantum(computerId,val); });
                 }
             });
 
@@ -837,7 +837,7 @@ panel.add(btnGuardar);
         }
     
 
-        void actualizar(Computer c) {
+        void actualizar(Node c) {
         actualizandoVista = true;
         try {
             nombre.setText(c.getName() + " · ID " + c.getId());
@@ -853,7 +853,7 @@ panel.add(btnGuardar);
                 spinnerQuantum.setValue(c.getQuantum());
             }
 
-            ProcessControlBlock p = c.getCpu().getPCB();
+            var p = c.getCpu().getPCB();
             cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
             
             if (p == null) {

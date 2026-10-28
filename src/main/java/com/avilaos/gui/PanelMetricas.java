@@ -14,7 +14,7 @@ import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.data.xy.XYSeries;
-import com.avilaos.hardware.Computer;
+import com.avilaos.simulation.SimulationSnapshot.Node;
 import org.jfree.data.xy.XYSeriesCollection;
 
 import javax.swing.JPanel;
@@ -31,7 +31,9 @@ public class PanelMetricas extends JPanel {
     private final SimulationController controller;
     private final XYSeriesCollection dataset;
     private XYSeries[] seriesComputadores;
-    private Computer[] nodos;
+    private Node[] nodos;
+    private long session=-1;
+    private int lastSample=-1;
     private org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer;
    
     private final JLabel lblRendimientoGlobal = new JLabel("Throughput: 0 | Deadlines: 0% | Equidad: 0%");
@@ -46,7 +48,7 @@ public class PanelMetricas extends JPanel {
         this.controller = controller;
         this.dataset = new XYSeriesCollection();
         this.seriesComputadores = new XYSeries[0];
-        this.nodos = new Computer[0];
+        this.nodos = new Node[0];
         
         setLayout(new BorderLayout());
         
@@ -94,23 +96,25 @@ public class PanelMetricas extends JPanel {
     }
 
     public void actualizarMetricas() {
-        int cicloActual = controller.getCurrentCycle();
+        var view=controller.snapshot();
+        if(session!=view.session) { nodos=new Node[0]; seriesComputadores=new XYSeries[0]; dataset.removeAllSeries(); session=view.session; lastSample=-1; }
+        int cicloActual = view.cycle;
 
 
-        var computadores = controller.getComputers();
+        var computadores = view.computers;
         int cantidadComputadores = computadores.size();
         
         // Conservar las series de las mismas instancias al agregar computadores.
         boolean cambio = nodos.length != cantidadComputadores;
-        for (int i = 0; !cambio && i < cantidadComputadores; i++) cambio = nodos[i] != computadores.get(i);
+        for (int i = 0; !cambio && i < cantidadComputadores; i++) cambio = nodos[i].getId() != computadores.get(i).getId();
         if (cambio) {
             XYSeries[] siguientes = new XYSeries[cantidadComputadores];
-            Computer[] actuales = new Computer[cantidadComputadores];
+            Node[] actuales = new Node[cantidadComputadores];
             dataset.removeAllSeries();
             for (int i = 0; i < cantidadComputadores; i++) {
                 actuales[i] = computadores.get(i);
                 for (int j = 0; j < nodos.length; j++) {
-                    if (nodos[j] == actuales[i]) siguientes[i] = seriesComputadores[j];
+                    if (nodos[j].getId() == actuales[i].getId()) siguientes[i] = seriesComputadores[j];
                 }
                 if (siguientes[i] == null) {
                     siguientes[i] = new XYSeries(actuales[i].getName(), true, false);
@@ -147,7 +151,14 @@ public class PanelMetricas extends JPanel {
             var c = computadores.get(i);
             
             double utilizacion = c.getCiclosObservados() == 0 ? 0.0 : ((double) c.getCiclosActivos() / c.getCiclosObservados()) * 100.0;
-            seriesComputadores[i].addOrUpdate((double) cicloActual, utilizacion);
+            for(int h=0;h<view.history.size();h++) {
+                var sample=view.history.get(h);
+                if(sample.cycle()<lastSample && !cambio) continue;
+                for(int u=0;u<sample.usage().size();u++) {
+                    var usage=sample.usage().get(u);
+                    if(usage.computerId()==c.getId()) seriesComputadores[i].addOrUpdate((double)sample.cycle(),usage.percent());
+                }
+            }
             
             activosGlobal += c.getCiclosActivos();
             observadosGlobal += c.getCiclosObservados();
@@ -166,6 +177,7 @@ public class PanelMetricas extends JPanel {
             tiempoRespuestaTotalGlobal += c.getTotalTiempoRespuesta();
         }
 
+        lastSample=cicloActual;
         // Calcular KPIs del Sistema
         double throughput = cicloActual == 0 ? 0.0 : (double) procesosCompletadosGlobal / cicloActual;
         double ratioDeadlines = finalizadosGlobal > 0
@@ -182,7 +194,7 @@ public class PanelMetricas extends JPanel {
 
         // Actualizar KPIs de Buffers usando iteración estándar sobre tu MyLinkedList
         panelBuffers.removeAll();
-        var buffers = controller.getBuffers();
+        var buffers = view.buffers;
         for (int i = 0; i < buffers.size(); i++) {
             var b = buffers.get(i);
             String stats = String.format("Buffer %d -> Producidos: %d | Consumidos: %d", 

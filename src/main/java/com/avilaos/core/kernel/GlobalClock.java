@@ -1,242 +1,111 @@
 package com.avilaos.core.kernel;
 
 import com.avilaos.core.structures.MyLinkedList;
+import com.avilaos.concurrency.StateAccess;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
-/**
- * Reloj Global centralizado del simulador ÁvilaOS.
- * 
- * Implementa el patrón Singleton y corre sobre un hilo independiente de Java (Runnable).
- * Sincroniza temporalmente a todos los computadores del clúster avanzando ciclo por ciclo.
- * 
- * Requisitos: RF §1, ARC-11, ARC-13, ARC-14, D-07.
+/** Un único hilo de reloj reutilizado. Tick y comandos comparten el permiso de estado.
+ * Dormir/esperar nunca retiene ese permiso. Pausa confirma el fin del tick en curso.
  */
 public class GlobalClock implements Runnable {
-
-    private static volatile GlobalClock instance;
-
-    private final MyLinkedList<IClockTickable> subscribers;
-    private int cycleCounter;
-    private volatile int cycleDurationMs;
-    private volatile boolean running;
-    private volatile boolean paused;
-
+    private static final GlobalClock INSTANCE = new GlobalClock();
+    private final MyLinkedList<IClockTickable> subscribers = new MyLinkedList<>();
+    private final Semaphore wake = new Semaphore(0);
+    private volatile int cycleCounter;
+    private volatile int cycleDurationMs = 1000;
+    private volatile boolean running, paused;
     private Thread clockThread;
-    private final Object pauseLock = new Object();
-    private final Object tickLock = new Object();
-
-    /**
-     * Constructor privado del Singleton.
-     */
-    private GlobalClock() {
-        this.subscribers = new MyLinkedList<>();
-        this.cycleCounter = 0;
-        this.cycleDurationMs = 1000; // Por defecto: 1 ciclo por segundo
-        this.running = false;
-        this.paused = false;
-    }
-
-    /**
-     * Retorna la instancia única del Reloj Global (hilo seguro).
-     *
-     * @return Instancia única de GlobalClock.
-     */
-    public static GlobalClock getInstance() {
-        if (instance == null) {
-            synchronized (GlobalClock.class) {
-                if (instance == null) {
-                    instance = new GlobalClock();
-                }
+    private GlobalClock() { }
+    public static GlobalClock getInstance() { return INSTANCE; }
+    public void start() {
+        StateAccess.enter();
+        try {
+            running=true; paused=false;
+            if (clockThread==null) {
+                clockThread=new Thread(this,"AvilaOS-GlobalClock");
+                clockThread.setDaemon(true); clockThread.start();
             }
-        }
-        return instance;
+            wake.release();
+        } finally { StateAccess.exit(); }
     }
-
-    /**
-     * Inicia la ejecución del hilo del reloj.
-     * Si ya estaba corriendo pero pausado, lo reanuda.
-     */
-    public synchronized void start() {
-        if (!running) {
-            running = true;
-            paused = false;
-            clockThread = new Thread(this, "AvilaOS-GlobalClock");
-            clockThread.setDaemon(true);
-            clockThread.start();
-        } else if (paused) {
-            resume();
-        }
-    }
-
-    /**
-     * Pausa el avance temporal del reloj sin destruir el hilo.
-     */
     public void pause() {
-        this.paused = true;
+        StateAccess.enter();
+        try { paused=true; wake.release(); } finally { StateAccess.exit(); }
     }
-
-    /**
-     * Reanuda el avance temporal del reloj tras una pausa.
-     */
-    public void resume() {
-        synchronized (pauseLock) {
-            this.paused = false;
-            pauseLock.notifyAll();
-        }
+    public void resume() { start(); }
+    public void stop() {
+        StateAccess.enter();
+        try { running=false; paused=false; wake.release(); } finally { StateAccess.exit(); }
     }
-
-    /**
-     * Detiene por completo el reloj global.
-     */
-    public synchronized void stop() {
-        running = false;
-        paused = false;
-        synchronized (pauseLock) {
-            pauseLock.notifyAll();
-        }
-        if (clockThread != null) {
-            clockThread.interrupt();
-            clockThread = null;
-        }
-    }
-
-    /**
-     * Ejecuta manualmente un único ciclo de reloj (modo paso a paso).
-     */
     public void step() {
-        tick();
+        StateAccess.enter();
+        try {
+            if(running && !paused) throw new IllegalStateException("Pausa el reloj antes del paso manual");
+            tickLocked();
+        } finally { StateAccess.exit(); }
     }
-
-    /**
-     * Pulso interno de reloj: incrementa el contador de ciclos y notifica a los suscriptores.
-     */
-    private void tick() {
-        int current;
-        synchronized (tickLock) {
-            cycleCounter++;
-            current = cycleCounter;
-        }
-
-        synchronized (subscribers) {
-            // Solución: Uso del iterador manual instanciado desde la clase concreta
-            MyLinkedList<IClockTickable>.MyLinkedListIterator iterator = subscribers.iterator();
-            while (iterator.hasNext()) {
-                IClockTickable subscriber = iterator.next();
-                try {
-                    subscriber.tick(current);
-                } catch (Exception e) {
-                    System.err.println("[GlobalClock] Error al notificar suscriptor en ciclo " 
-                            + current + ": " + e.getMessage());
-                }
-            }
-        }
+    private void tickLocked() {
+        int cycle=++cycleCounter;
+        // Copia evita cambios en suscripciones durante callbacks; todos bajo el mismo permiso.
+        IClockTickable[] copy=new IClockTickable[subscribers.size()];
+        for(int i=0;i<copy.length;i++) copy[i]=subscribers.get(i);
+        for(IClockTickable subscriber:copy) subscriber.tick(cycle);
     }
-
-    @Override
-    public void run() {
-        while (running) {
-            synchronized (pauseLock) {
-                while (paused && running) {
-                    try {
-                        pauseLock.wait();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                }
-            }
-
-            if (!running) {
-                break;
-            }
-
-            tick();
-
+    @Override public void run() {
+        while(true) {
+            boolean active;
+            StateAccess.enter();
             try {
-                Thread.sleep(cycleDurationMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
+                wake.drainPermits();
+                active=running && !paused;
+                if(active) tickLocked();
+            } catch (RuntimeException ex) {
+                paused=true; active=false;
+                System.err.println("[GlobalClock] Pausado por error: " + ex.getMessage());
+            } finally { StateAccess.exit(); }
+            try {
+                if(active) wake.tryAcquire(cycleDurationMs,TimeUnit.MILLISECONDS);
+                else wake.acquire();
+            } catch(InterruptedException ex) { Thread.currentThread().interrupt(); return; }
         }
     }
-
-    /**
-     * Suscribe un componente (computador/CPU/dispositivo) al pulso del reloj.
-     *
-     * @param subscriber Componente que implementa IClockTickable.
-     */
     public void addSubscriber(IClockTickable subscriber) {
-        if (subscriber != null) {
-            synchronized (subscribers) {
-                if (!subscribers.contains(subscriber)) {
-                    subscribers.add(subscriber);
-                }
-            }
-        }
+        StateAccess.enter();
+        try { if(subscriber!=null && !subscribers.contains(subscriber)) subscribers.add(subscriber); }
+        finally { StateAccess.exit(); }
     }
-
-    /**
-     * Desuscribe un componente del reloj global.
-     *
-     * @param subscriber Componente a remover.
-     */
     public void removeSubscriber(IClockTickable subscriber) {
-        if (subscriber != null) {
-            synchronized (subscribers) {
-                subscribers.remove(subscriber);
-            }
-        }
+        StateAccess.enter();
+        try { if(subscriber!=null) subscribers.remove(subscriber); }
+        finally { StateAccess.exit(); }
     }
-
-    /**
-     * Reinicia el reloj global a su estado inicial (ciclo 0 y sin suscriptores).
-     */
-    public synchronized void reset() {
-        stop();
-        synchronized (tickLock) {
-            this.cycleCounter = 0;
-        }
-        synchronized (subscribers) {
-            // Optimizado para usar deleteFirst en lugar de buscar por índice repetidamente
-            while (!subscribers.isEmpty()) {
-                subscribers.deleteFirst();
-            }
-        }
+    public void reset() {
+        StateAccess.enter();
+        try {
+            running=false; paused=false; cycleCounter=0;
+            while(!subscribers.isEmpty()) subscribers.deleteFirst();
+            wake.release();
+        } finally { StateAccess.exit(); }
     }
-
-    // --- GETTERS Y SETTERS ---
-
-    public int getCycleCounter() {
-        synchronized (tickLock) {
-            return cycleCounter;
-        }
+    public int getCycleCounter() { return cycleCounter; }
+    public void setCycleCounter(int cycle) {
+        StateAccess.enter();
+        try { cycleCounter=Math.max(0,cycle); } finally { StateAccess.exit(); }
     }
-
-    public void setCycleCounter(int cycleCounter) {
-        synchronized (tickLock) {
-            this.cycleCounter = Math.max(0, cycleCounter);
-        }
+    public int getCycleDurationMs() { return cycleDurationMs; }
+    public void setCycleDurationMs(int ms) {
+        StateAccess.enter();
+        try { if(ms>0) cycleDurationMs=ms; } finally { StateAccess.exit(); }
     }
-
-    public int getCycleDurationMs() {
-        return cycleDurationMs;
-    }
-
-    public void setCycleDurationMs(int cycleDurationMs) {
-        if (cycleDurationMs > 0) {
-            this.cycleDurationMs = cycleDurationMs;
-        }
-    }
-
-    public boolean isRunning() {
-        return running;
-    }
-
-    public boolean isPaused() {
-        return paused;
-    }
-
+    public boolean isRunning() { return running; }
+    public boolean isPaused() { return paused; }
     public MyLinkedList<IClockTickable> getSubscribers() {
-        return subscribers;
+        StateAccess.enter();
+        try {
+            MyLinkedList<IClockTickable> copy=new MyLinkedList<>();
+            for(int i=0;i<subscribers.size();i++) copy.add(subscribers.get(i));
+            return copy;
+        } finally { StateAccess.exit(); }
     }
 }

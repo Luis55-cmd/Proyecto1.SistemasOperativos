@@ -17,6 +17,7 @@ import com.avilaos.sync.Buffer;
 import com.avilaos.sync.ProducerConsumerDriver;
 
 import javax.swing.SwingUtilities;
+import com.avilaos.concurrency.StateAccess;
 
 /**
  * Controlador y Fachada Central de la Simulación (Capa 3: Control y Simulación).
@@ -36,11 +37,48 @@ public class SimulationController implements IClockTickable {
     private final MyLinkedList<Buffer> buffers;
     private final GlobalClock clock;
     private final ProducerConsumerDriver syncDriver;
-    
+
     // Lista de observadores de la interfaz gráfica y de logs
     private final MyLinkedList<Runnable> guiListeners;
     private final MyLinkedList<ILogListener> logListeners;
 
+    private record LogEntry(long session, int cycle, String message) { }
+    private final com.avilaos.core.structures.MyQueue<LogEntry> pendingLogs = new com.avilaos.core.structures.MyQueue<>();
+    private boolean logPending;
+    private int omittedLogs;
+    private volatile SimulationSnapshot snapshot;
+    private volatile long session;
+    private boolean refreshPending;
+    public SimulationSnapshot snapshot() { return snapshot; }
+    public long session() { return session; }
+    public void requireSession(long expected) {
+        if (session != expected) throw new IllegalStateException("La sesión cambió; vuelve a enviar la solicitud");
+    }
+    private void publishSnapshot() {
+        snapshot = new SimulationSnapshot(session, clock.getCycleCounter(), clock.isRunning(), clock.isPaused(),
+                clock.getCycleDurationMs(), computers, buffers, snapshot);
+        synchronized (guiListeners) {
+            if (refreshPending) return;
+            refreshPending = true;
+        }
+        SwingUtilities.invokeLater(() -> {
+            Runnable[] listeners;
+            synchronized (guiListeners) {
+                refreshPending = false;
+                listeners = new Runnable[guiListeners.size()];
+                for (int i=0;i<listeners.length;i++) listeners[i]=guiListeners.get(i);
+            }
+            for (Runnable listener : listeners) listener.run();
+        });
+    }
+    public void setComputerPolicy(int id, SchedulingPolicyType policy) {
+        StateAccess.enter();
+        try {
+            Computer c=getComputerById(id);
+            if(c==null) throw new IllegalArgumentException("Computador inexistente");
+            c.setPolitica(policy);
+        } finally { StateAccess.exit(); }
+    }
     private int nextComputerId = 1;
     private int nextBufferId = 1;
 
@@ -52,6 +90,7 @@ public class SimulationController implements IClockTickable {
         this.clock = GlobalClock.getInstance();
         this.syncDriver = new ProducerConsumerDriver(2); // Latencia por defecto: 2 ciclos
         this.clock.addSubscriber(this);
+        StateAccess.setPublisher(this::publishSnapshot);
     }
 
     public static SimulationController getInstance() {
@@ -68,56 +107,82 @@ public class SimulationController implements IClockTickable {
     // =========================================================================
     // CONEXIÓN CON LA INTERFAZ GRÁFICA Y LOGS (Patrón Observador)
     // =========================================================================
-    
+
     /** Registra un panel de la GUI para que se actualice cuando cambie la simulación. */
     public void addGUIListener(Runnable listener) {
         if (listener != null) {
-            this.guiListeners.append(listener);
+            synchronized (guiListeners) { this.guiListeners.append(listener); }
         }
     }
 
     /** Registra un escuchador de logs (por ejemplo, el panel de consola en la GUI). */
     public void addLogListener(ILogListener listener) {
         if (listener != null) {
-            this.logListeners.append(listener);
+            synchronized (logListeners) { this.logListeners.append(listener); }
         }
     }
 
     /** Emite un mensaje de evento al registro de logs y notifica a la GUI en el EDT. */
     public void logEvent(String message) {
         if (message == null || message.trim().isEmpty()) return;
-        
-        SwingUtilities.invokeLater(() -> {
-            for (int i = 0; i < logListeners.size(); i++) {
-                ILogListener listener = logListeners.get(i);
-                if (listener != null) {
-                    listener.onLogAdded(message);
-                }
+
+        LogEntry event=new LogEntry(session,clock.getCycleCounter(),message);
+        synchronized(logListeners) {
+            if(pendingLogs.size()==2000) {pendingLogs.dequeue(); omittedLogs++;}
+            pendingLogs.enqueue(event);
+            if(logPending) return;
+            logPending=true;
+        }
+        SwingUtilities.invokeLater(this::flushLogs);
+    }
+
+    /** Lotes acotados para no inundar la cola del EDT. Los callbacks no retienen el monitor. */
+    private void flushLogs() {
+        LogEntry[] batch;
+        ILogListener[] listeners;
+        int omitted;
+        synchronized(logListeners) {
+            batch=new LogEntry[Math.min(100,pendingLogs.size())];
+            for(int i=0;i<batch.length;i++) batch[i]=pendingLogs.dequeue();
+            listeners=new ILogListener[logListeners.size()];
+            for(int i=0;i<listeners.length;i++) listeners[i]=logListeners.get(i);
+            omitted=omittedLogs; omittedLogs=0;
+        }
+        try {
+            for(ILogListener listener:listeners) {
+                if(omitted>0) listener.onLogAdded("[Log] "+omitted+" eventos omitidos por saturación");
+                for(LogEntry event:batch) if(event.session()==session)
+                    listener.onLogAdded("[Ciclo "+event.cycle()+"] "+event.message());
             }
-        });
+        } finally {
+            synchronized(logListeners) {
+                if(pendingLogs.isEmpty()) logPending=false;
+                else SwingUtilities.invokeLater(this::flushLogs);
+            }
+        }
     }
 
     /** Dispara la actualización en todos los paneles registrados de forma segura en Swing. */
     private void notifyGUI() {
-        SwingUtilities.invokeLater(() -> {
-            for (int i = 0; i < guiListeners.size(); i++) {
-                Runnable listener = guiListeners.get(i);
-                if (listener != null) {
-                    listener.run();
-                }
-            }
-        });
+        // La salida exterior del permiso publica una sola vista consistente.
+        if (!StateAccess.isOwner()) { StateAccess.enter(); StateAccess.exit(); }
     }
 
     // =========================================================================
     // MÉTODOS PARA BOTONES DE LA GUI (Gestión de Clúster, Procesos y Buffers)
     // =========================================================================
 
-    public synchronized Computer createComputer(int ramSize, SchedulingPolicyType policy) {
+    public Computer createComputer(int ramSize, SchedulingPolicyType policy) {
+        StateAccess.enter();
+        try {
         return createComputer(ramSize, policy, 3);
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized Computer createComputer(int ramSize, SchedulingPolicyType policy, int quantum) {
+    public Computer createComputer(int ramSize, SchedulingPolicyType policy, int quantum) {
+        StateAccess.enter();
+        try {
         int id = nextComputerId++;
         RAM ram = new RAM(ramSize, 0, new int[ramSize]);
         CPU cpu = new CPU(0, 0, 0, null, ExecutionMode.USER);
@@ -134,18 +199,26 @@ public class SimulationController implements IClockTickable {
 
         Computer comp = new Computer(id, cpu, ram, dma, kernel, policy != null ? policy : SchedulingPolicyType.FCFS, quantum);
         this.computers.append(comp);
-        
+
         String quantumInfo = (comp.getPolitica() == SchedulingPolicyType.ROUND_ROBIN) ? " con quantum " + comp.getQuantum() : "";
         logEvent("Computador creado: " + comp.getName() + " (ID " + id + ") con política " + comp.getPolitica() + quantumInfo);
         notifyGUI();
         return comp;
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized Computer createComputer(String name, int ramSize, SchedulingPolicyType policy) {
+    public Computer createComputer(String name, int ramSize, SchedulingPolicyType policy) {
+        StateAccess.enter();
+        try {
         return createComputer(name, ramSize, policy, 3);
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized Computer createComputer(String name, int ramSize, SchedulingPolicyType policy, int quantum) {
+    public Computer createComputer(String name, int ramSize, SchedulingPolicyType policy, int quantum) {
+        StateAccess.enter();
+        try {
         if (name == null || name.trim().isEmpty() || ramSize <= 0 || policy == null) {
             throw new IllegalArgumentException("Indica nombre, RAM positiva y política.");
         }
@@ -157,28 +230,40 @@ public class SimulationController implements IClockTickable {
         }
         Computer computer = createComputer(ramSize, policy, quantum);
         computer.setName(name);
-        
+
         notifyGUI();
         return computer;
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized void setComputerQuantum(int computerId, int quantum) {
+    public void setComputerQuantum(int computerId, int quantum) {
+        StateAccess.enter();
+        try {
         Computer comp = getComputerById(computerId);
         if (comp != null) {
             comp.setQuantum(quantum);
             logEvent("Quantum de " + comp.getName() + " actualizado a " + comp.getQuantum());
             notifyGUI();
         }
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
+    public ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
                                                           int instructions, int memory, int priority, int deadline) {
+        StateAccess.enter();
+        try {
         return createProcess(name, computerId, type, instructions, memory, priority, deadline, 0, 0);
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
+    public ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
                                                           int instructions, int memory, int priority, int deadline,
                                                           int ioInterval, int ioDuration) {
+        StateAccess.enter();
+        try {
         ProcessControlBlock pcb = createProcess(name, computerId, type, instructions, memory, priority, deadline, null, 1, 0);
         if (pcb != null && type == ProcessType.IO_BOUND && ioInterval > 0 && ioDuration > 0) {
             pcb.setIoInterval(ioInterval);
@@ -186,11 +271,15 @@ public class SimulationController implements IClockTickable {
             pcb.setIoCycleCountdown(ioInterval); // primer bloqueo ocurre luego de ioInterval ciclos de CPU
         }
         return pcb;
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
+    public ProcessControlBlock createProcess(String name, int computerId, ProcessType type,
                                                           int instructions, int memory, int priority, int deadline,
                                                           String targetBufferId, int cyclesPerOperation, int requiredElements) {
+        StateAccess.enter();
+        try {
         if (name == null || name.trim().isEmpty()) {
             logEvent("Error: El nombre del proceso no puede estar vacío");
             return null;
@@ -223,7 +312,7 @@ public class SimulationController implements IClockTickable {
         }
 
         if (comp.getMemoryManager() != null && memory > comp.getMemoryManager().getTotalMemory()) {
-            logEvent("Error: Memoria solicitada (" + memory + ") excede la RAM total (" 
+            logEvent("Error: Memoria solicitada (" + memory + ") excede la RAM total ("
                     + comp.getMemoryManager().getTotalMemory() + ") de " + comp.getName());
             return null;
         }
@@ -261,10 +350,12 @@ public class SimulationController implements IClockTickable {
             logEvent(resGestion);
             return null;
         }
-        
+
         logEvent("Proceso creado: " + pcb.getName() + " (ID " + pcb.getId() + ", Mem: " + memory + ") asignado a " + comp.getName());
         notifyGUI();
         return pcb;
+
+        } finally { StateAccess.exit(); }
     }
 
     /**
@@ -278,7 +369,9 @@ public class SimulationController implements IClockTickable {
      * @param requiredMemory Memoria solicitada por el proceso.
      * @return El computador seleccionado, o null si ninguno tiene capacidad de RAM suficiente.
      */
-    public synchronized Computer selectSenderInitiatedComputer(int requiredMemory) {
+    public Computer selectSenderInitiatedComputer(int requiredMemory) {
+        StateAccess.enter();
+        try {
         if (this.computers.isEmpty()) {
             return null;
         }
@@ -303,7 +396,7 @@ public class SimulationController implements IClockTickable {
 
             // Iniciativa del emisor: primer nodo receptor que esté por debajo del umbral de carga
             if (load < THRESHOLD_LOAD) {
-                logEvent("[Sender-Initiated] Asignando proceso a " + c.getName() 
+                logEvent("[Sender-Initiated] Asignando proceso a " + c.getName()
                         + " (Carga: " + load + " < Umbral T=" + THRESHOLD_LOAD + ")");
                 return c;
             }
@@ -315,18 +408,26 @@ public class SimulationController implements IClockTickable {
         }
 
         if (bestCandidate != null) {
-            logEvent("[Sender-Initiated] Todos los nodos superaron umbral T=" + THRESHOLD_LOAD 
+            logEvent("[Sender-Initiated] Todos los nodos superaron umbral T=" + THRESHOLD_LOAD
                     + ". Asignando a " + bestCandidate.getName() + " por menor carga (" + minLoad + ")");
         }
         return bestCandidate;
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized Buffer createBuffer(int hostComputerId, int storage) {
+    public Buffer createBuffer(int hostComputerId, int storage) {
+        StateAccess.enter();
+        try {
         return createBuffer(hostComputerId, storage, storage);
+
+        } finally { StateAccess.exit(); }
     }
 
     /** Compatibilidad con cargas anteriores: la RAM se deriva de capacidad, no del campo legacy memory. */
-    public synchronized Buffer createBuffer(int hostComputerId, int storage, int memory) {
+    public Buffer createBuffer(int hostComputerId, int storage, int memory) {
+        StateAccess.enter();
+        try {
         if (storage <= 0) {
             return null;
         }
@@ -346,10 +447,12 @@ public class SimulationController implements IClockTickable {
 
         nextBufferId++;
         this.buffers.append(buffer);
-        
+
         logEvent("Buffer " + id + " creado en " + host.getName() + " con capacidad " + storage);
         notifyGUI();
         return buffer;
+
+        } finally { StateAccess.exit(); }
     }
 
     // =========================================================================
@@ -357,10 +460,6 @@ public class SimulationController implements IClockTickable {
     // =========================================================================
 
     public void startSimulation() {
-        if (this.computers.isEmpty()) {
-            logEvent("No se puede iniciar la simulación: No hay computadores creados.");
-            return;
-        }
         this.clock.start();
         logEvent("Simulación iniciada");
         notifyGUI();
@@ -373,10 +472,6 @@ public class SimulationController implements IClockTickable {
     }
 
     public void stepSimulation() {
-        if (this.computers.isEmpty()) {
-            logEvent("No se puede avanzar el ciclo: No hay computadores creados.");
-            return;
-        }
         this.clock.step();
         notifyGUI();
     }
@@ -408,8 +503,10 @@ public class SimulationController implements IClockTickable {
     }
 
     public void setNetworkLatency(int latencyCycles) {
-        this.syncDriver.setLatencia(latencyCycles);
+        StateAccess.enter();
+        try { this.syncDriver.setLatencia(latencyCycles);
         logEvent("Latencia de red actualizada a " + latencyCycles + " ciclos");
+        } finally { StateAccess.exit(); }
     }
 
     public int getNetworkLatency() {
@@ -421,7 +518,9 @@ public class SimulationController implements IClockTickable {
     // =========================================================================
 
     @Override
-    public synchronized void tick(int currentCycle) {
+    public void tick(int currentCycle) {
+        StateAccess.enter();
+        try {
         StringBuilder tickReport = new StringBuilder("Actividad CPUs -> ");
         boolean hayActividad = false;
 
@@ -429,22 +528,24 @@ public class SimulationController implements IClockTickable {
             Computer comp = this.computers.get(i);
             if (comp != null && comp.getKernel() != null) {
                 comp.getKernel().executeCycle(comp, currentCycle, this.syncDriver, this.buffers);
-                
+
                 // Construcción del reporte de log por cada CPU
                 ProcessControlBlock runningPcb = comp.getCpu().getPCB();
                 String estadoCpu = (runningPcb != null) ? runningPcb.getName() + " (PC:" + comp.getCpu().getPC() + ")" : "Inactiva";
-                
+
                 tickReport.append("[").append(comp.getName()).append(": ").append(estadoCpu).append("] ");
                 hayActividad = true;
             }
         }
-        
+
         // Emite el log diario de actividad por tick si hay computadores
         if (hayActividad) {
             logEvent(tickReport.toString().trim());
         }
 
         notifyGUI(); // Actualiza visualmente la GUI
+
+        } finally { StateAccess.exit(); }
     }
 
     // =========================================================================
@@ -495,16 +596,23 @@ public class SimulationController implements IClockTickable {
         return all;
     }
 
-    public synchronized void restoreProcess(ProcessControlBlock pcb) {
+    public void restoreProcess(ProcessControlBlock pcb) {
+        StateAccess.enter();
+        try {
         if (pcb == null) return;
         Computer comp = getComputerById(pcb.getComputerId());
         if (comp != null && comp.getKernel() != null) {
             comp.getKernel().restoreProcess(comp, pcb);
             notifyGUI();
         }
+
+        } finally { StateAccess.exit(); }
     }
 
-    public synchronized void reset() {
+    public void reset() {
+        StateAccess.enter();
+        try {
+        session++;
         this.clock.reset();
         this.clock.addSubscriber(this);
         while (!this.computers.isEmpty()) {
@@ -515,8 +623,10 @@ public class SimulationController implements IClockTickable {
         }
         this.nextComputerId = 1;
         this.nextBufferId = 1;
-        
+
         logEvent("Simulador reiniciado a estado inicial");
         notifyGUI();
+
+        } finally { StateAccess.exit(); }
     }
 }

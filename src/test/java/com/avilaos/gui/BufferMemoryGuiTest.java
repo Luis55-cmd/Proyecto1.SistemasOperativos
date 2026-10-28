@@ -30,6 +30,11 @@ public class BufferMemoryGuiTest {
             try { capacidad.commitEdit(); } catch (java.text.ParseException e) { throw new AssertionError(e); }
             if (!ram.getText().equals("17")) throw new AssertionError("TEXTO: RAM sigue edición escrita");
             ((JButton) CreacionComputadoresGuiTest.buscar(panel, JButton.class, "Crear y registrar Buffer")).doClick();
+        });
+        GuiTestDrain.await();
+        SwingUtilities.invokeAndWait(() -> {
+            var c=SimulationController.getInstance();
+            var pc=c.getComputerById(1);
             if (c.getBuffers().size() != 1 || pc.getMemoryManager().getUsedMemory() != 17
                     || c.getBuffers().get(0).getSizeInMemory() != 17) throw new AssertionError("CREACION: RAM 17");
             System.out.println("PASS BufferMemoryGuiTest");

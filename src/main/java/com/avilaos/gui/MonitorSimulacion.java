@@ -182,20 +182,27 @@ public final class MonitorSimulacion extends JPanel {
     }
     
     private int extraerValorInt(String texto, String clave, int defecto) {
-    try {
-        String patron = "\"" + clave + "\":";
-        int idx = texto.indexOf(patron);
-        if (idx == -1) return defecto;
-        int start = idx + patron.length();
-        int end = texto.indexOf(",", start);
-        if (end == -1) end = texto.indexOf("}", start);
-        if (end == -1) end = texto.indexOf("]", start);
-        String val = texto.substring(start, end).replaceAll("[^0-9-]", "").trim();
-        return Integer.parseInt(val);
-    } catch (Exception e) {
-        return defecto;
+        int idx = texto.indexOf("\"" + clave + "\"");
+        if (idx < 0) return defecto;
+        int cursor = idx + clave.length() + 2;
+        while (cursor < texto.length() && Character.isWhitespace(texto.charAt(cursor))) cursor++;
+        if (cursor == texto.length() || texto.charAt(cursor++) != ':') return defecto;
+        while (cursor < texto.length() && Character.isWhitespace(texto.charAt(cursor))) cursor++;
+        int start = cursor;
+        if (cursor < texto.length() && texto.charAt(cursor) == '-') cursor++;
+        int digits = cursor;
+        while (cursor < texto.length() && texto.charAt(cursor) >= '0' && texto.charAt(cursor) <= '9') cursor++;
+        if (cursor == digits) return defecto;
+        int end = cursor;
+        while (cursor < texto.length() && Character.isWhitespace(texto.charAt(cursor))) cursor++;
+        if (cursor < texto.length() && texto.charAt(cursor) != ','
+                && texto.charAt(cursor) != '}' && texto.charAt(cursor) != ']') return defecto;
+        try {
+            return Integer.parseInt(texto.substring(start, end));
+        } catch (NumberFormatException ex) {
+            return defecto;
+        }
     }
-}
 
 private String extraerValorString(String texto, String clave, String defecto) {
     try {

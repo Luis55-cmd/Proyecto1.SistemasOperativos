@@ -43,86 +43,92 @@ public class ProducerConsumerDriver {
         pcb.setMode(ExecutionMode.USER);
     }
 
+    /** Una llamada ejecuta a lo sumo una instrucción. Los waits avanzan antes
+     * de bloquear; la fase siguiente queda guardada en el PCB para reanudar.
+     */
     public boolean executeCycle(ProcessControlBlock pcb, Buffer buffer) {
-        if (pcb == null || buffer == null) {
-            return false;
+        if (pcb == null || buffer == null) return false;
+        synchronized (buffer) {
+            if (pcb.getState() != ProcessState.EJECUTANDO) return false;
+            boolean producer = pcb.getType() == ProcessType.PRODUCER;
+            if (!producer && pcb.getType() != ProcessType.CONSUMER)
+                throw new IllegalArgumentException("El protocolo requiere productor o consumidor");
+            if (pcb.getRequiredElements() <= 0 || pcb.getCyclesPerOperation() <= 0)
+                throw new IllegalArgumentException("Elementos y ciclos deben ser positivos");
+            // Un consumidor empieza esperando un elemento; trabaja después de extraerlo.
+            if (!producer && pcb.getProgramCounter() == 0)
+                pcb.setSyncPhase(ProcessControlBlock.SyncPhase.WAIT_SLOT);
+
+            if (pcb.getSyncPhase() == ProcessControlBlock.SyncPhase.WORK) {
+                pcb.setMode(ExecutionMode.USER);
+                advanceInstruction(pcb);
+                pcb.setOperationWorkDone(pcb.getOperationWorkDone() + 1);
+                if (pcb.getOperationWorkDone() >= pcb.getCyclesPerOperation()) {
+                    pcb.setOperationWorkDone(0);
+                    if (!producer) completeElement(pcb);
+                    if (pcb.getState() != ProcessState.SALIENTE)
+                        pcb.setSyncPhase(ProcessControlBlock.SyncPhase.WAIT_SLOT);
+                }
+                updateRemaining(pcb);
+                return pcb.getState() == ProcessState.EJECUTANDO;
+            }
+            // La red espera antes del primer wait, fuera de la sección crítica.
+            if (pcb.getSyncPhase() == ProcessControlBlock.SyncPhase.WAIT_SLOT
+                    && !networkSimulator.handleDelay(pcb, buffer)) return false;
+
+            pcb.setMode(ExecutionMode.KERNEL);
+            switch (pcb.getSyncPhase()) {
+                case WAIT_SLOT -> {
+                    buffer.semWait(pcb, producer ? Buffer.SemaphoreKind.VACIOS : Buffer.SemaphoreKind.LLENOS);
+                    pcb.setSyncPhase(ProcessControlBlock.SyncPhase.WAIT_MUTEX);
+                }
+                case WAIT_MUTEX -> {
+                    buffer.semWait(pcb, Buffer.SemaphoreKind.MUTEX);
+                    pcb.setSyncPhase(ProcessControlBlock.SyncPhase.ACCESS);
+                }
+                case ACCESS -> {
+                    if (!pcb.holdsBufferMutex() || pcb.getReservedBufferSlot() == null)
+                        throw new IllegalStateException("Acceso sin permisos");
+                    if (producer) buffer.produce(pcb.getId());
+                    else buffer.consume();
+                    pcb.recordBufferOperation(buffer.getId());
+                    advanceInstruction(pcb);
+                    pcb.setSyncPhase(ProcessControlBlock.SyncPhase.SIGNAL_MUTEX);
+                }
+                case SIGNAL_MUTEX -> {
+                    buffer.semSignal(pcb, Buffer.SemaphoreKind.MUTEX);
+                    pcb.setSyncPhase(ProcessControlBlock.SyncPhase.SIGNAL_SLOT);
+                }
+                case SIGNAL_SLOT -> {
+                    buffer.semSignal(pcb, producer ? Buffer.SemaphoreKind.LLENOS : Buffer.SemaphoreKind.VACIOS);
+                    pcb.setNetworkDelayDone(false);
+                    pcb.setSyncPhase(ProcessControlBlock.SyncPhase.WORK);
+                    if (producer) completeElement(pcb);
+                }
+                default -> throw new IllegalStateException("Fase inesperada");
+            }
+            updateRemaining(pcb);
+            return pcb.getState() == ProcessState.EJECUTANDO;
         }
+    }
 
-        // Manejo de latencia de red en accesos remotos (bloquea sin permitir operaciones de buffer)
-        if (!networkSimulator.handleDelay(pcb, buffer)) {
-            pcb.setMode(ExecutionMode.USER);
-            return false;
+    private void advanceInstruction(ProcessControlBlock pcb) {
+        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
+        pcb.setMemoryAddressRegister(pcb.getMemoryAddressRegister() + 1);
+    }
+
+    private void updateRemaining(ProcessControlBlock pcb) {
+        int total = Math.multiplyExact(pcb.getRequiredElements(), Math.addExact(pcb.getCyclesPerOperation(), 5));
+        pcb.setTotalInstructions(total);
+        pcb.setRemainingTime(Math.max(0, total - pcb.getProgramCounter()));
+    }
+
+    private void completeElement(ProcessControlBlock pcb) {
+        pcb.incrementProcessedElements();
+        if (pcb.getProcessedElements() >= pcb.getRequiredElements()) {
+            pcb.setState(ProcessState.SALIENTE);
+            pcb.setBlockReason(BlockReason.NONE);
         }
-
-        // Operaciones de sincronización de semáforos se ejecutan en modo SYSTEM (llamada al sistema)
-        pcb.setMode(ExecutionMode.KERNEL);
-
-        switch (pcb.getSyncStage()) {
-            case 0 -> {
-                if (pcb.getType() == ProcessType.PRODUCER) {
-                    if (!buffer.getVacios().tryAcquire()) {
-                        buffer.registerWaitingVacios(pcb);
-                        blockProcess(pcb, BlockReason.WAITING_FULL_BUFFER);
-                        return false;
-                    }
-                } else {
-                    if (!buffer.getLlenos().tryAcquire()) {
-                        buffer.registerWaitingLlenos(pcb);
-                        blockProcess(pcb, BlockReason.WAITING_EMPTY_BUFFER);
-                        return false;
-                    }
-                }
-                pcb.setSyncStage(1);
-                return true;
-            }
-            case 1 -> {
-                if (!buffer.getMutex().tryAcquire()) {
-                    buffer.registerWaitingMutex(pcb);
-                    blockProcess(pcb, BlockReason.WAITING_MUTEX);
-                    return false;
-                }
-                pcb.setSyncStage(2);
-                return true;
-            }
-            case 2 -> {
-                if (pcb.getType() == ProcessType.PRODUCER) {
-                    buffer.produce(pcb.getId());
-                } else {
-                    buffer.consume();
-                }
-                pcb.setSyncStage(3);
-                return true;
-            }
-            case 3 -> {
-                buffer.getMutex().release();
-                wakeUpProcess(buffer.pollWaitingMutex());
-                pcb.setSyncStage(4);
-                return true;
-            }
-            case 4 -> {
-                if (pcb.getType() == ProcessType.PRODUCER) {
-                    buffer.getLlenos().release();
-                    wakeUpProcess(buffer.pollWaitingLlenos());
-                } else {
-                    buffer.getVacios().release();
-                    wakeUpProcess(buffer.pollWaitingVacios());
-                }
-                pcb.incrementProcessedElements();
-                pcb.decrementRemainingTime();
-                pcb.setSyncStage(0);
-                pcb.setNetworkDelayDone(false);
-                pcb.setMode(ExecutionMode.USER); // Regresa a modo usuario
-
-                if (pcb.getProcessedElements() >= pcb.getRequiredElements() || pcb.getRemainingTime() <= 0) {
-                    pcb.setState(ProcessState.SALIENTE);
-                    pcb.setBlockReason(BlockReason.NONE);
-                    return false;
-                }
-                return true;
-            }
-        }
-        pcb.setMode(ExecutionMode.USER);
-        return true;
     }
 
     public static void wakeUpProcess(ProcessControlBlock pcb) {

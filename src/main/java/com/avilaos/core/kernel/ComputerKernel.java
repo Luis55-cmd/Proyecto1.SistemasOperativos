@@ -534,7 +534,9 @@ public class ComputerKernel {
 
             // Verificar terminación natural
             if (currentRunning.getState() == ProcessState.SALIENTE
-                    || currentRunning.getRemainingTime() <= 0) {
+                    || (currentRunning.getType() != ProcessType.PRODUCER
+                        && currentRunning.getType() != ProcessType.CONSUMER
+                        && currentRunning.getRemainingTime() <= 0)) {
                 terminateProcess(comp, currentRunning);
             }
         }
@@ -625,35 +627,7 @@ public class ComputerKernel {
         Buffer buf = findBufferById(parseBufferId(pcb.getTargetBufferId()), buffers);
         if (buf == null) return;
 
-        // Retirar al proceso de todas las colas de espera del búfer
-        buf.removeWaitingProcess(pcb);
-
-        int stage = pcb.getSyncStage();
-
-        // Etapa 2 o 3: el proceso retiene el mutex → liberarlo y despertar al siguiente
-        if ((stage == 2 || stage == 3) && buf.getMutex() != null) {
-            buf.getMutex().release();
-            ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingMutex());
-        }
-
-        // Etapas 1, 2 o 3: el proceso retiene un permiso de vacios/llenos adquirido en etapa 0
-        // Devolverlo para evitar fuga permanente de capacidad del búfer.
-        if (stage >= 1 && stage <= 3) {
-            if (pcb.getType() == com.avilaos.core.model.ProcessType.PRODUCER) {
-                // El productor tomó un permiso de vacios (espacio libre); devolverlo
-                buf.getVacios().release();
-                // Despertar un productor que pudiera estar bloqueado por búfer lleno
-                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingVacios());
-            } else if (pcb.getType() == com.avilaos.core.model.ProcessType.CONSUMER) {
-                // El consumidor tomó un permiso de llenos (dato disponible); devolverlo
-                buf.getLlenos().release();
-                // Despertar un consumidor que pudiera estar bloqueado por búfer vacío
-                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingLlenos());
-            }
-        }
-
-        // Resetear la etapa de sincronización para no reusar estado corrupto
-        pcb.setSyncStage(0);
+        buf.cleanupPermits(pcb);
     }
 
     private Buffer findBufferById(int id, MyLinkedList<Buffer> buffers) {

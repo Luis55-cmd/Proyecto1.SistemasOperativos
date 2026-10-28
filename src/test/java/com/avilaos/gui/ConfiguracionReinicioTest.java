@@ -10,6 +10,18 @@ public class ConfiguracionReinicioTest {
         if (!m.cargarEstado(new File(args[0]))) throw new AssertionError("Fallo al cargar escenario");
         for (int i=0; i<9; i++) c.stepSimulation();
         if (!c.getAllProcesses().get(0).isTerminated()) throw new AssertionError("No terminó el proceso");
+        // Los nombres con símbolos deben sobrevivir al análisis JSON, sin cortar listas.
+        var json = com.google.gson.JsonParser.parseString(Files.readString(new File(args[0]).toPath())).getAsJsonObject();
+        String nombreEspecial = "Equipo ] \"principal\"";
+        json.getAsJsonArray("computers").get(0).getAsJsonObject().addProperty("name", nombreEspecial);
+        File especial = Files.createTempFile("avilaos-nombre-", ".json").toFile();
+        try {
+            Files.writeString(especial.toPath(), json.toString());
+            if (!m.cargarEstado(especial) || c.getComputers().size() != 2 || c.getBuffers().size() != 1
+                    || c.getAllProcesses().size() != 3 || !nombreEspecial.equals(c.getComputers().get(0).getName()))
+                throw new AssertionError("El nombre con símbolos causó una carga incompleta");
+            for (int i=0; i<9; i++) c.stepSimulation();
+        } finally { especial.delete(); }
         File salida = Files.createTempFile("avilaos-config-", ".json").toFile();
         try {
             if (!m.guardarEstado(salida)) throw new AssertionError("Falló el guardado");

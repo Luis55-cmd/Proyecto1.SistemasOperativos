@@ -21,7 +21,7 @@ final class ValidarCarga {
         JsonElement e = o.get(k);
         if (e == null || !e.isJsonPrimitive() || !e.getAsJsonPrimitive().isString()) throw error("Falta texto: " + k);
         String s = e.getAsString();
-        if (s.trim().isEmpty() || s.indexOf('"') >= 0 || s.indexOf('\\') >= 0 || s.chars().anyMatch(c -> c < 32))
+        if (s.trim().isEmpty() || s.chars().anyMatch(c -> c < 32))
             throw error("Texto inválido: " + k);
         return s;
     }
@@ -59,6 +59,7 @@ final class ValidarCarga {
         }
         for (int i=0;i<ps.size();i++) {
             JsonObject p=objeto(ps.get(i)); int id=numero(p,"id",1), host=numero(p,"computerId",1), mem=numero(p,"assignedMemory",0);
+            if (id == Integer.MAX_VALUE) throw error("ID de proceso demasiado grande");
             texto(p,"name"); int instrucciones=numero(p,"totalInstructions",1); numero(p,"priority",1); numero(p,"deadline",1);
             if(host>ram.length || mem>ram[host-1]) throw error("RAM o computador inválido para proceso " + id);
             for(int j=0;j<i;j++) if(numero(objeto(ps.get(j)),"id",1)==id) throw error("ID de proceso duplicado: " + id);

@@ -6,7 +6,9 @@ package com.avilaos.hardware;
 
 import com.avilaos.core.kernel.ComputerKernel;
 import com.avilaos.core.model.SchedulingPolicyType;
+import com.avilaos.core.model.ProcessControlBlock; // Asegúrate de que esta importación coincida con tu estructura
 import com.avilaos.memory.MemoryManager;
+
 /**
  *
  * @author rafr
@@ -21,6 +23,15 @@ public class Computer {
     private SchedulingPolicyType politica;
     private int quantum = 3;
     private MemoryManager memoryManager;
+
+    // --- Variables para Métricas de Rendimiento ---
+    private int ciclosActivos = 0;
+    private int ciclosObservados = 0;
+    private int procesosFinalizados = 0;
+    private int procesosCompletados = 0;
+    private int totalTiempoRespuesta = 0;
+    private int deadlinesCumplidos = 0;
+    private int totalTiempoEspera = 0;
 
     public Computer(int id, CPU cpu, RAM ram, DMA dma, ComputerKernel kernel, SchedulingPolicyType politica) {
         this(id, cpu, ram, dma, kernel, politica, 3);
@@ -38,6 +49,35 @@ public class Computer {
         this.memoryManager = (ram != null) ? new com.avilaos.memory.MemoryManager(ram) : null;
     }
 
+    // --- Métodos para Métricas de Rendimiento ---
+    public void incrementarCicloActivo() { 
+        this.ciclosActivos++; 
+    }
+    
+    /** Un tick observado por este computador, incluso si no tiene un proceso ejecutando. */
+    public void registrarCicloObservado() { ciclosObservados++; }
+    public int getCiclosObservados() { return ciclosObservados; }
+    public int getProcesosFinalizados() { return procesosFinalizados; }
+
+    /** Invocado una sola vez por terminateProcess; abortos no cuentan como trabajo completado. */
+    public void registrarTerminacion(ProcessControlBlock pcb, int cicloActual) {
+        procesosFinalizados++;
+        boolean completo = pcb.getRemainingTime() <= 0
+                || (pcb.getRequiredElements() > 0 && pcb.getProcessedElements() >= pcb.getRequiredElements());
+        if (!completo) return;
+        procesosCompletados++;
+        totalTiempoRespuesta += Math.max(0, pcb.getStartCycle() - pcb.getArrivalCycle());
+        totalTiempoEspera += pcb.getWaitingTime();
+        if (pcb.getRemainingDeadline() > 0) deadlinesCumplidos++;
+    }
+
+    public int getCiclosActivos() { return ciclosActivos; }
+    public int getProcesosCompletados() { return procesosCompletados; }
+    public int getTotalTiempoRespuesta() { return totalTiempoRespuesta; }
+    public int getTotalTiempoEspera() { return totalTiempoEspera; }
+    public int getDeadlinesCumplidos() { return deadlinesCumplidos; }
+
+    // --- Métodos Originales ---
     /** Nombre visible; el ID sigue siendo la identidad. No cambia hardware ni reloj. */
     public String getName() { return name; }
 
@@ -120,5 +160,21 @@ public class Computer {
         if (memoryManager != null && memoryManager.getRam() != null) {
             this.ram = memoryManager.getRam();
         }
+    }
+
+    public void setCiclosActivos(int ciclosActivos) {
+        this.ciclosActivos = ciclosActivos;
+    }
+
+    public void setProcesosCompletados(int procesosCompletados) {
+        this.procesosCompletados = procesosCompletados;
+    }
+
+    public void setTotalTiempoRespuesta(int totalTiempoRespuesta) {
+        this.totalTiempoRespuesta = totalTiempoRespuesta;
+    }
+
+    public void setDeadlinesCumplidos(int deadlinesCumplidos) {
+        this.deadlinesCumplidos = deadlinesCumplidos;
     }
 }

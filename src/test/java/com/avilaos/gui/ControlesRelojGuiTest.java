@@ -23,10 +23,22 @@ public class ControlesRelojGuiTest {
                 monitor.actualizarVista();
                 if (!combo.getSelectedItem().equals(100)) throw new AssertionError("Borró selección pendiente");
                 boton("Aplicar").doClick();
+            });
+            GuiTestDrain.await();
+            SwingUtilities.invokeAndWait(() -> {
+                monitor.actualizarVista();
                 if (controller.getCycleDurationMs() != 100 || controller.isRunning() || controller.getCurrentCycle() != 0) throw new AssertionError("Aplicar");
                 boton("+1 tick").doClick();
+            });
+            GuiTestDrain.await();
+            SwingUtilities.invokeAndWait(() -> {
+                monitor.actualizarVista();
                 if (controller.getCurrentCycle() != 1) throw new AssertionError("Paso");
                 boton("Iniciar").doClick();
+            });
+            GuiTestDrain.await();
+            SwingUtilities.invokeAndWait(() -> {
+                monitor.actualizarVista();
                 if (boton("+1 tick").isEnabled() || boton("Iniciar").isEnabled()) throw new AssertionError("Activa");
             });
             Thread.sleep(250);
@@ -37,8 +49,13 @@ public class ControlesRelojGuiTest {
             Thread.sleep(200);
             if (controller.getCurrentCycle() != pausado) throw new AssertionError("No pausó");
             SwingUtilities.invokeAndWait(() -> {
+                monitor.actualizarVista();
                 if (!boton("Reanudar").isEnabled()) throw new AssertionError("Reanudar");
                 boton("+1 tick").doClick();
+            });
+            GuiTestDrain.await();
+            SwingUtilities.invokeAndWait(() -> {
+                monitor.actualizarVista();
                 if (controller.getCurrentCycle() != pausado + 1) throw new AssertionError("Paso pausado");
                 boton("Reanudar").doClick();
             });

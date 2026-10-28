@@ -2,6 +2,7 @@ package com.avilaos.gui;
 
 import java.awt.*;
 import com.avilaos.hardware.Computer;
+import com.avilaos.simulation.SimulationSnapshot;
 import com.avilaos.simulation.SimulationController;
 import com.avilaos.sync.Buffer;
 import com.avilaos.core.model.SchedulingPolicyType;
@@ -11,7 +12,7 @@ import javax.swing.border.EmptyBorder;
 
 /** Vista Swing: conserva formularios; no modifica el kernel ni ejecuta procesos. */
 public class PanelPrincipal extends JPanel {
-    public enum Destino { MENU, COMPUTADOR, BUFFER, PROCESO, SIMULACION }
+    public enum Destino { MENU, COMPUTADOR, BUFFER, PROCESO, SIMULACION, METRICAS }
     static final Color FONDO = new Color(246, 243, 234);
     static final Color TINTA = new Color(38, 58, 43);
     static final Color GRIS = new Color(119, 105, 85);
@@ -24,6 +25,7 @@ public class PanelPrincipal extends JPanel {
     private Destino destinoActual;
     private final EditorProceso editorProceso;
     private final MonitorSimulacion monitor;
+    private final PanelMetricas metricas;
     private final SimulationController controller = SimulationController.getInstance();
     
     // Controles de Computador
@@ -45,7 +47,7 @@ public class PanelPrincipal extends JPanel {
     // NOTA: El campo ID numérico se deshabilita/elimina visualmente porque el Controller lo autogenera.
     private final JComboBox<OpcionComputador> comboComputadorBuffer = new JComboBox<>();
     private final JSpinner spinnerAlmacenamiento = new JSpinner(new SpinnerNumberModel(10, 1, 1000, 1));
-    private final JSpinner spinnerTamanioMemoria = new JSpinner(new SpinnerNumberModel(20, 1, 1024, 1));
+    private final JTextField memoriaBuffer = new JTextField("10");
     private final JLabel resultadoBuffer = texto("Ningún buffer creado en esta sesión.", 12, GRIS, false);
     private final DefaultTableModel buffersVisibles = new DefaultTableModel(
             new String[]{"ID Buffer", "ID Comp", "Capacidad (Items)", "Tamaño en RAM"}, 0) {
@@ -65,7 +67,7 @@ public class PanelPrincipal extends JPanel {
         lateral.add(marca);
         lateral.add(Box.createVerticalStrut(28));
         
-        String[] titulos = {"01   Inicio", "02   Computadores", "03   Buffers", "04   Procesos", "05   Simulación"};
+        String[] titulos = {"01   Inicio", "02   Computadores", "03   Buffers", "04   Procesos", "05   Simulación", "06   Métricas"};
         for (Destino destino : Destino.values()) {
             JButton boton = accion(titulos[destino.ordinal()], false);
             boton.setHorizontalAlignment(SwingConstants.LEFT);
@@ -91,11 +93,19 @@ public class PanelPrincipal extends JPanel {
         pantallas.add(editorProceso, Destino.PROCESO.name());
         monitor = new MonitorSimulacion(controller, () -> mostrarPanel(Destino.COMPUTADOR));
         pantallas.add(monitor, Destino.SIMULACION.name());
+        metricas = new PanelMetricas(controller);
+        JPanel vistaMetricas = new JPanel(new BorderLayout(0, 16));
+        vistaMetricas.setBackground(FONDO);
+        vistaMetricas.setBorder(new EmptyBorder(24, 24, 24, 24));
+        vistaMetricas.add(texto("Métricas del sistema", 26, TINTA, true), BorderLayout.NORTH);
+        vistaMetricas.add(metricas, BorderLayout.CENTER);
+        pantallas.add(vistaMetricas, Destino.METRICAS.name());
         add(pantallas, BorderLayout.CENTER);
         
         // --- CONEXIÓN AL OBSERVER ---
         // Se actualizan las tablas automáticamente cuando el SimulationController cambia
         controller.addGUIListener(() -> {
+            metricas.actualizarMetricas();
             actualizarListaComputadores();
             actualizarListaBuffers();
             actualizarOpcionesComputadoresBuffer();
@@ -106,6 +116,9 @@ public class PanelPrincipal extends JPanel {
 
     public void mostrarPanel(Destino destino) {
         if (destino == null) throw new IllegalArgumentException("Destino de navegación requerido");
+        if (destino == Destino.METRICAS) {
+            metricas.actualizarMetricas();
+        }
         if (destino == Destino.PROCESO) editorProceso.actualizarListas();
         if (destino == Destino.SIMULACION) monitor.actualizarVista();
         
@@ -253,8 +266,14 @@ public class PanelPrincipal extends JPanel {
         fila2.setAlignmentX(LEFT_ALIGNMENT);
         fila2.setMaximumSize(new Dimension(500, 62));
         fila2.add(campo("Capacidad (Elementos)", spinnerAlmacenamiento));
-        // El tamaño en memoria podría calcularse, pero lo conservamos si lo quieres enviar
-        fila2.add(campo("Tamaño en RAM", spinnerTamanioMemoria));
+        memoriaBuffer.setEditable(false);
+        memoriaBuffer.setName("ramBuffer");
+        spinnerAlmacenamiento.setName("capacidadBuffer");
+        ((javax.swing.text.DefaultFormatter) ((JSpinner.DefaultEditor) spinnerAlmacenamiento.getEditor())
+                .getTextField().getFormatter()).setCommitsOnValidEdit(true);
+        spinnerAlmacenamiento.addChangeListener(e ->
+                memoriaBuffer.setText(spinnerAlmacenamiento.getValue().toString()));
+        fila2.add(campo("Tamaño en RAM", memoriaBuffer));
         tarjeta.add(fila2);
         tarjeta.add(Box.createVerticalStrut(22));
         
@@ -283,10 +302,11 @@ public class PanelPrincipal extends JPanel {
     }
 
     private void actualizarOpcionesComputadoresBuffer() {
+        var view = controller.snapshot();
         OpcionComputador seleccion = (OpcionComputador) comboComputadorBuffer.getSelectedItem();
         comboComputadorBuffer.removeAllItems();
-        for (int i = 0; i < controller.getComputers().size(); i++) {
-            Computer c = controller.getComputers().get(i);
+        for (int i = 0; i < view.computers.size(); i++) {
+            var c = view.computers.get(i);
             OpcionComputador op = new OpcionComputador(c.getId(), c.getName());
             comboComputadorBuffer.addItem(op);
             if (seleccion != null && seleccion.id() == c.getId()) {
@@ -304,20 +324,14 @@ public class PanelPrincipal extends JPanel {
             }
             
             spinnerAlmacenamiento.commitEdit();
-            spinnerTamanioMemoria.commitEdit();
             
             int capacidad = (Integer) spinnerAlmacenamiento.getValue();
-            int memoria = (Integer) spinnerTamanioMemoria.getValue();
-            // Inyección real al Controlador usando el host y el almacenamiento deseado.
-            // (Tu método createBuffer usa el `storage` para asignar la RAM).
-            Buffer nuevoBuffer = controller.createBuffer(compSeleccionado.id(), capacidad, memoria);
-            
-            if (nuevoBuffer != null) {
-                resultadoBuffer.setText("Buffer ID " + nuevoBuffer.getId() + " creado exitosamente en Host " + compSeleccionado.id());
-                // No necesitamos añadir a la tabla manualmente, el Observer llamará a actualizarListaBuffers()
-            } else {
-                resultadoBuffer.setText("Error al crear. ¿Tiene RAM suficiente el Host " + compSeleccionado.id() + "?");
-            }
+            resultadoBuffer.setText("Creando buffer…");
+            GuiRequest.model(controller, () -> {
+                Buffer b=controller.createBuffer(compSeleccionado.id(), capacidad);
+                return b==null ? "Error: RAM insuficiente o anfitrión inválido" : "Buffer ID " + b.getId() + " creado en Host " + compSeleccionado.id();
+            }, resultadoBuffer::setText, error -> resultadoBuffer.setText(error.getMessage()));
+
             
         } catch (Exception ex) {
             resultadoBuffer.setText("Error al crear el buffer: " + ex.getMessage());
@@ -325,9 +339,10 @@ public class PanelPrincipal extends JPanel {
     }
     
     private void actualizarListaBuffers() {
+        var view = controller.snapshot();
         buffersVisibles.setRowCount(0);
-        for (int i = 0; i < controller.getBuffers().size(); i++) {
-            Buffer b = controller.getBuffers().get(i);
+        for (int i = 0; i < view.buffers.size(); i++) {
+            var b = view.buffers.get(i);
             buffersVisibles.addRow(new Object[]{
                 b.getId(), 
                 b.getIdComp(),       // Computador Host
@@ -378,24 +393,25 @@ public class PanelPrincipal extends JPanel {
             resultadoComputador.setText("Escribe un nombre y selecciona la RAM.");
             return;
         }
-        Computer creado;
-        try {
-            int quantum = (Integer) spinnerQuantum.getValue();
-            creado = controller.createComputer(nombreComputador.getText(), ram, politicaSeleccionada, quantum);
-        } catch (IllegalArgumentException error) {
-            nombreComputador.setBorder(BorderFactory.createLineBorder(new Color(166, 44, 38), 2));
+        String name=nombreComputador.getText();
+        int quantum=(Integer)spinnerQuantum.getValue();
+        SchedulingPolicyType policy=politicaSeleccionada;
+        resultadoComputador.setText("Creando computador…");
+        GuiRequest.model(controller, () -> {
+            Computer creado=controller.createComputer(name,ram,policy,quantum);
+            return "Creado: " + creado.getName() + " · ID " + creado.getId();
+        }, resultadoComputador::setText, error -> {
+            nombreComputador.setBorder(BorderFactory.createLineBorder(new Color(166,44,38),2));
             errorNombre.setText(error.getMessage());
             resultadoComputador.setText("No se creó otro computador.");
-            nombreComputador.requestFocusInWindow();
-            return;
-        }
-        resultadoComputador.setText("Creado: " + creado.getName() + " · ID " + creado.getId());
+        });
     }
 
     private void actualizarListaComputadores() {
+        var view = controller.snapshot();
         computadoresVisibles.setRowCount(0);
-        for (int i = 0; i < controller.getComputers().size(); i++) {
-            Computer c = controller.getComputers().get(i);
+        for (int i = 0; i < view.computers.size(); i++) {
+            var c = view.computers.get(i);
             String polStr = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN)
                     ? "Round Robin (Q: " + c.getQuantum() + ")"
                     : c.getPolitica().toString();

@@ -16,7 +16,6 @@ public class ProcessCreationValidationTest {
         testRejectInvalidParameters();
         testRejectInvalidProducerConsumer();
         testSenderInitiatedLoadBalancing();
-        testRejectStartWithZeroComputers();
         System.out.println(">>> TODAS LAS PRUEBAS DE ProcessCreationValidationTest PASARON EXITOSAMENTE. <<<");
     }
 
@@ -187,23 +186,5 @@ public class ProcessCreationValidationTest {
         System.out.println("[PASS] testSenderInitiatedLoadBalancing");
     }
 
-    private static void testRejectStartWithZeroComputers() {
-        SimulationController controller = SimulationController.getInstance();
-        controller.reset();
-
-        // Con 0 computadores, startSimulation() no debe arrancar el reloj
-        controller.startSimulation();
-        if (controller.isRunning()) {
-            throw new AssertionError("La simulación no debe arrancar con 0 computadores");
-        }
-
-        // Tampoco debe avanzar ciclos con stepSimulation()
-        int cicloInicial = controller.getCurrentCycle();
-        controller.stepSimulation();
-        if (controller.getCurrentCycle() != cicloInicial) {
-            throw new AssertionError("El ciclo no debe avanzar en stepSimulation con 0 computadores");
-        }
-
-        System.out.println("[PASS] testRejectStartWithZeroComputers");
-    }
+    // El reloj independiente del número de computadores se verifica en ControlesRelojGuiTest.
 }

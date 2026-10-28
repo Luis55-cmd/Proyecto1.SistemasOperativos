@@ -36,9 +36,6 @@ public class ComputerKernel {
                           MyQueue<ProcessControlBlock> blockedQueue,
                           MyQueue<ProcessControlBlock> newQueue,
                           MyQueue<ProcessControlBlock> readyQueue,
-                          MyQueue<ProcessControlBlock> readyQueue2,
-                          MyQueue<ProcessControlBlock> readyQueue3,
-                          MyQueue<ProcessControlBlock> readyQueue4,
                           MyQueue<ProcessControlBlock> endedQueue,
                           GlobalClock clock) {
         this.processList = (processList != null) ? processList : new MyLinkedList<>();
@@ -300,6 +297,9 @@ public class ComputerKernel {
             return;
         }
 
+        if (com != null) {
+            com.registrarTerminacion(p, clock != null ? clock.getCycleCounter() : Math.max(0, p.getCompletionCycle()));
+        }
         p.setTerminated(true);
         p.setState(ProcessState.SALIENTE);
         p.setBlockReason(BlockReason.NONE);
@@ -382,7 +382,7 @@ public class ComputerKernel {
         if (buffer == null || com == null) {
             return false;
         }
-        int cantidad = buffer.getStorage();
+        int cantidad = buffer.getSizeInMemory();
         if (cantidad <= 0) {
             return false;
         }
@@ -464,6 +464,8 @@ public class ComputerKernel {
         CPU cpu = comp.getCpu();
         if (cpu == null) return;
 
+        comp.registrarCicloObservado();
+
         // 1. Notificar al planificador (quantum Round Robin, etc.)
         IScheduler scheduler = getOrUpdateScheduler(comp);
         if (scheduler != null) {
@@ -490,6 +492,8 @@ public class ComputerKernel {
 
         // 5. Ejecutar 1 ciclo si hay un proceso en CPU
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
+            comp.incrementarCicloActivo();
+            if (currentRunning.getStartCycle() < 0) currentRunning.setStartCycle(currentCycle);
             if (currentRunning.getType() == ProcessType.PRODUCER
                     || currentRunning.getType() == ProcessType.CONSUMER) {
                 Buffer targetBuf = findBufferById(
@@ -530,8 +534,18 @@ public class ComputerKernel {
 
             // Verificar terminación natural
             if (currentRunning.getState() == ProcessState.SALIENTE
-                    || currentRunning.getRemainingTime() <= 0) {
+                    || (currentRunning.getType() != ProcessType.PRODUCER
+                        && currentRunning.getType() != ProcessType.CONSUMER
+                        && currentRunning.getRemainingTime() <= 0)) {
                 terminateProcess(comp, currentRunning);
+            }
+        }
+
+        // 5.5 Tiempo de espera: todo proceso admitido que no ejecutó en este ciclo (listo o bloqueado)
+        for (int i = 0; i < this.processList.size(); i++) {
+            ProcessControlBlock w = this.processList.get(i);
+            if (w != null && (w.getState() == ProcessState.LISTO || w.getState() == ProcessState.BLOQUEADO)) {
+                w.incrementWaitingTime();
             }
         }
 
@@ -621,35 +635,7 @@ public class ComputerKernel {
         Buffer buf = findBufferById(parseBufferId(pcb.getTargetBufferId()), buffers);
         if (buf == null) return;
 
-        // Retirar al proceso de todas las colas de espera del búfer
-        buf.removeWaitingProcess(pcb);
-
-        int stage = pcb.getSyncStage();
-
-        // Etapa 2 o 3: el proceso retiene el mutex → liberarlo y despertar al siguiente
-        if ((stage == 2 || stage == 3) && buf.getMutex() != null) {
-            buf.getMutex().release();
-            ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingMutex());
-        }
-
-        // Etapas 1, 2 o 3: el proceso retiene un permiso de vacios/llenos adquirido en etapa 0
-        // Devolverlo para evitar fuga permanente de capacidad del búfer.
-        if (stage >= 1 && stage <= 3) {
-            if (pcb.getType() == com.avilaos.core.model.ProcessType.PRODUCER) {
-                // El productor tomó un permiso de vacios (espacio libre); devolverlo
-                buf.getVacios().release();
-                // Despertar un productor que pudiera estar bloqueado por búfer lleno
-                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingVacios());
-            } else if (pcb.getType() == com.avilaos.core.model.ProcessType.CONSUMER) {
-                // El consumidor tomó un permiso de llenos (dato disponible); devolverlo
-                buf.getLlenos().release();
-                // Despertar un consumidor que pudiera estar bloqueado por búfer vacío
-                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingLlenos());
-            }
-        }
-
-        // Resetear la etapa de sincronización para no reusar estado corrupto
-        pcb.setSyncStage(0);
+        buf.cleanupPermits(pcb);
     }
 
     private Buffer findBufferById(int id, MyLinkedList<Buffer> buffers) {

@@ -40,6 +40,8 @@ public class ProcessControlBlock {
     private BlockReason blockReason;
     private int priority;
     private int assignedMemory;
+    /** Memoria solicitada al crear el proceso, incluso después de liberarla. */
+    private int requiredMemory;
 
     // Tiempos e instrucciones
     private int totalInstructions;
@@ -195,6 +197,7 @@ public class ProcessControlBlock {
         this.totalInstructions = totalInstructions;
         this.remainingTime = totalInstructions;
         this.assignedMemory = assignedMemory;
+        this.requiredMemory = assignedMemory;
         this.priority = priority;
         this.deadline = deadline;
         this.remainingDeadline = deadline;
@@ -436,6 +439,10 @@ public class ProcessControlBlock {
 
     public int getAssignedMemory() {
         return assignedMemory;
+    }
+
+    public int getRequiredMemory() {
+        return requiredMemory;
     }
 
     public void setAssignedMemory(int assignedMemory) {

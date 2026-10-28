@@ -25,6 +25,10 @@ public class PcbInitializationTest {
                     || pcb.getMemoryAddressRegister() != 0 || pcb.getProcessedElements() != 0) {
                 throw new AssertionError("Contexto inicial inconsistente: " + type);
             }
+            pcb.setAssignedMemory(0); // La terminación libera la memoria asignada.
+            if (pcb.getRequiredMemory() != 8 || pcb.getAssignedMemory() != 0) {
+                throw new AssertionError("La liberación perdió la memoria requerida: " + type);
+            }
             previous = pcb;
         }
         ProcessControlBlock fallback = new ProcessControlBlock(

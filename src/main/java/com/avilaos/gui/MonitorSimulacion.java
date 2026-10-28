@@ -227,8 +227,8 @@ private String extraerValorString(String texto, String clave, String defecto) {
         panel.setOpaque(false);
         panel.setAlignmentX(LEFT_ALIGNMENT);
 
-        JButton btnGuardar = accion("Guardar Estado", false);
-        JButton btnCargar = accion("Cargar Estado", false);
+        JButton btnGuardar = accion("Guardar configuración", false);
+        JButton btnCargar = accion("Cargar configuración", false);
 
         btnGuardar.addActionListener(e -> {
     JFileChooser chooser = new JFileChooser();
@@ -242,7 +242,7 @@ private String extraerValorString(String texto, String clave, String defecto) {
 
         File destino = archivo;
         btnGuardar.setEnabled(false);
-        GuiCommands.submit(() -> guardarEstado(destino), ok -> btnGuardar.setEnabled(true),
+        GuiCommands.submit(() -> guardarEstado(destino), ok -> { btnGuardar.setEnabled(true); if (!ok) JOptionPane.showMessageDialog(this, "No se pudo guardar la configuración. Consulta el log.", "Error al guardar", JOptionPane.ERROR_MESSAGE); },
                 error -> { btnGuardar.setEnabled(true); controller.logEvent(error.getMessage()); });
     }
 });
@@ -254,8 +254,19 @@ private String extraerValorString(String texto, String clave, String defecto) {
         File archivo = chooser.getSelectedFile();
 
         btnCargar.setEnabled(false);
-        GuiCommands.submit(() -> cargarEstado(archivo), ok -> btnCargar.setEnabled(true),
-                error -> { btnCargar.setEnabled(true); controller.logEvent(error.getMessage()); });
+        GuiCommands.submit(() -> cargarEstado(archivo), ok -> {
+            btnCargar.setEnabled(true);
+            if (!ok) {
+                JOptionPane.showMessageDialog(this,
+                        "No se pudo cargar el archivo. Consulta el log para conocer el error.",
+                        "Error de carga", JOptionPane.ERROR_MESSAGE);
+            }
+        }, error -> {
+            btnCargar.setEnabled(true);
+            controller.logEvent(error.getMessage());
+            JOptionPane.showMessageDialog(this, "No se pudo cargar el archivo: " + error.getMessage(),
+                    "Error de carga", JOptionPane.ERROR_MESSAGE);
+        });
     }
 });
 panel.add(btnGuardar);
@@ -278,86 +289,82 @@ panel.add(btnGuardar);
         return panel;
     }
 
-    /** Ruta compartida con Guardar Estado; no abre el selector de archivos. */
+    /** Guarda una configuración para comenzar de nuevo, no un checkpoint. */
     boolean guardarEstado(File archivo) {
         try {
-            java.io.StringWriter copia = new java.io.StringWriter();
-            java.io.PrintWriter writer = new java.io.PrintWriter(copia);
+            com.google.gson.JsonObject root = new com.google.gson.JsonObject();
+            com.google.gson.JsonArray computers = new com.google.gson.JsonArray();
+            com.google.gson.JsonArray buffers = new com.google.gson.JsonArray();
+            com.google.gson.JsonArray processes = new com.google.gson.JsonArray();
             StateAccess.enter();
             try {
-            writer.println("{");
-            writer.println("  \"currentCycle\": " + controller.getCurrentCycle() + ",");
-            writer.println("  \"cycleDurationMs\": " + controller.getCycleDurationMs() + ",");
-            writer.println("  \"networkLatency\": " + controller.getNetworkLatency() + ",");
-            
-            // Exportar Computadores
-            writer.println("  \"computers\": [");
-            MyLinkedList<Computer> comps = controller.getComputers();
-            for (int i = 0; i < comps.size(); i++) {
-                Computer c = comps.get(i);
-                writer.println("    {");
-                writer.println("      \"name\": \"" + c.getName() + "\",");
-                writer.println("      \"ramSize\": " + c.getMemoryManager().getTotalMemory() + ",");
-                writer.println("      \"policy\": \"" + c.getPolitica() + "\",");
-                writer.println("      \"quantum\": " + c.getQuantum());
-                writer.print("    }" + (i < comps.size() - 1 ? "," : ""));
-                writer.println();
-            }
-            writer.println("  ],");
-
-            // Exportar Buffers (distinguiendo storage de sizeInMemory)
-            writer.println("  \"buffers\": [");
-            MyLinkedList<Buffer> bufs = controller.getBuffers();
-            for (int i = 0; i < bufs.size(); i++) {
-                Buffer b = bufs.get(i);
-                writer.println("    {");
-                writer.println("      \"id\": " + b.getId() + ",");
-                writer.println("      \"hostComputerId\": " + b.getIdComp() + ",");
-                writer.println("      \"storage\": " + b.getStorage() + ",");
-                writer.println("      \"sizeInMemory\": " + b.getSizeInMemory());
-                writer.print("    }" + (i < bufs.size() - 1 ? "," : ""));
-                writer.println();
-            }
-            writer.println("  ],");
-
-            // Exportar Procesos (con todos sus atributos y estado actual)
-            writer.println("  \"processes\": [");
-            MyLinkedList<ProcessControlBlock> procs = controller.getAllProcesses();
-            for (int i = 0; i < procs.size(); i++) {
-                ProcessControlBlock p = procs.get(i);
-                writer.println("    {");
-                writer.println("      \"id\": " + p.getId() + ",");
-                writer.println("      \"name\": \"" + p.getName() + "\",");
-                writer.println("      \"computerId\": " + p.getComputerId() + ",");
-                writer.println("      \"type\": \"" + p.getType() + "\",");
-                writer.println("      \"totalInstructions\": " + p.getTotalInstructions() + ",");
-                writer.println("      \"remainingTime\": " + p.getRemainingTime() + ",");
-                writer.println("      \"assignedMemory\": " + p.getAssignedMemory() + ",");
-                writer.println("      \"priority\": " + p.getPriority() + ",");
-                writer.println("      \"deadline\": " + p.getDeadline() + ",");
-                writer.println("      \"remainingDeadline\": " + p.getRemainingDeadline() + ",");
-                writer.println("      \"state\": \"" + p.getState() + "\",");
-                writer.println("      \"blockReason\": \"" + p.getBlockReason() + "\",");
-                writer.println("      \"programCounter\": " + p.getProgramCounter() + ",");
-                writer.println("      \"memoryAddressRegister\": " + p.getMemoryAddressRegister() + ",");
-                writer.println("      \"ioInterval\": " + p.getIoInterval() + ",");
-                writer.println("      \"ioDuration\": " + p.getIoDuration() + ",");
-                writer.println("      \"ioCycleCountdown\": " + p.getIoCycleCountdown() + ",");
-                writer.println("      \"targetBufferId\": " + (p.getTargetBufferId() != null ? "\"" + p.getTargetBufferId() + "\"" : "null") + ",");
-                writer.println("      \"cyclesPerOperation\": " + p.getCyclesPerOperation() + ",");
-                writer.println("      \"requiredElements\": " + p.getRequiredElements() + ",");
-                writer.println("      \"processedElements\": " + p.getProcessedElements());
-                writer.print("    }" + (i < procs.size() - 1 ? "," : ""));
-                writer.println();
-            }
-            writer.println("  ]");
-            writer.println("}");
-            
+                root.addProperty("currentCycle", 0);
+                root.addProperty("cycleDurationMs", controller.getCycleDurationMs());
+                root.addProperty("networkLatency", controller.getNetworkLatency());
+                MyLinkedList<Computer> cs = controller.getComputers();
+                int[] libre = new int[cs.size()];
+                for (int i = 0; i < cs.size(); i++) {
+                    Computer c = cs.get(i);
+                    com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+                    o.addProperty("name", c.getName());
+                    o.addProperty("ramSize", c.getMemoryManager().getTotalMemory());
+                    o.addProperty("policy", c.getPolitica().name());
+                    o.addProperty("quantum", c.getQuantum());
+                    libre[i] = c.getMemoryManager().getTotalMemory();
+                    computers.add(o);
+                }
+                MyLinkedList<Buffer> bs = controller.getBuffers();
+                for (int i = 0; i < bs.size(); i++) {
+                    Buffer b = bs.get(i);
+                    com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+                    o.addProperty("id", b.getId());
+                    o.addProperty("hostComputerId", b.getIdComp());
+                    o.addProperty("storage", b.getStorage());
+                    o.addProperty("sizeInMemory", b.getSizeInMemory());
+                    libre[b.getIdComp() - 1] -= b.getStorage();
+                    buffers.add(o);
+                }
+                MyLinkedList<ProcessControlBlock> ps = controller.getAllProcesses();
+                for (int i = 0; i < ps.size(); i++) {
+                    ProcessControlBlock p = ps.get(i);
+                    int memory = p.getRequiredMemory();
+                    if (memory <= 0) throw new IllegalStateException("No se conoce la memoria original de " + p.getName());
+                    int host = p.getComputerId() - 1;
+                    boolean admitted = memory <= libre[host];
+                    if (admitted) libre[host] -= memory;
+                    com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+                    o.addProperty("id", p.getId()); o.addProperty("name", p.getName());
+                    o.addProperty("computerId", p.getComputerId()); o.addProperty("type", p.getType().name());
+                    o.addProperty("totalInstructions", p.getTotalInstructions());
+                    o.addProperty("remainingTime", p.getTotalInstructions());
+                    o.addProperty("assignedMemory", memory); o.addProperty("priority", p.getPriority());
+                    o.addProperty("deadline", p.getDeadline()); o.addProperty("remainingDeadline", p.getDeadline());
+                    o.addProperty("state", admitted ? "LISTO" : "NUEVO"); o.addProperty("blockReason", "NONE");
+                    o.addProperty("programCounter", 0); o.addProperty("memoryAddressRegister", 0);
+                    o.addProperty("ioInterval", p.getIoInterval()); o.addProperty("ioDuration", p.getIoDuration());
+                    o.addProperty("ioCycleCountdown", p.getIoInterval());
+                    o.addProperty("targetBufferId", p.getTargetBufferId());
+                    o.addProperty("cyclesPerOperation", p.getCyclesPerOperation());
+                    o.addProperty("requiredElements", p.getRequiredElements()); o.addProperty("processedElements", 0);
+                    processes.add(o);
+                }
             } finally { StateAccess.exit(); }
-            java.nio.file.Files.writeString(archivo.toPath(), copia.toString(), java.nio.charset.StandardCharsets.UTF_8);
+            root.add("computers", computers); root.add("buffers", buffers); root.add("processes", processes);
+            String json = new com.google.gson.GsonBuilder().setPrettyPrinting().serializeNulls().create().toJson(root);
+            ValidarCarga.validar(json);
+            java.nio.file.Path destino = archivo.toPath().toAbsolutePath();
+            java.nio.file.Path temporal = java.nio.file.Files.createTempFile(destino.getParent(), ".avilaos-", ".tmp");
+            try {
+                java.nio.file.Files.writeString(temporal, json, java.nio.charset.StandardCharsets.UTF_8);
+                try {
+                    java.nio.file.Files.move(temporal, destino, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+                    java.nio.file.Files.move(temporal, destino, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally { java.nio.file.Files.deleteIfExists(temporal); }
             controller.logEvent("Configuración guardada exitosamente en JSON: " + archivo.getName());
             return true;
-        } catch (java.io.IOException ex) {
+        } catch (Exception ex) {
             controller.logEvent("Error al guardar archivo JSON: " + ex.getMessage());
             return false;
         }
@@ -373,6 +380,8 @@ panel.add(btnGuardar);
             }
 
             String json = sb.toString();
+
+            json = ValidarCarga.validar(json);
             
             StateAccess.enter();
             try {

@@ -567,6 +567,14 @@ public class ComputerKernel {
             }
         }
 
+        // 5.5 Tiempo de espera: todo proceso admitido que no ejecutó en este ciclo (listo o bloqueado)
+        for (int i = 0; i < this.processList.size(); i++) {
+            ProcessControlBlock w = this.processList.get(i);
+            if (w != null && (w.getState() == ProcessState.LISTO || w.getState() == ProcessState.BLOQUEADO)) {
+                w.incrementWaitingTime();
+            }
+        }
+
         // 6. Avanzar componentes de hardware auxiliares que reaccionan al reloj (ARC-22)
         if (comp.getDma() != null) {
             comp.getDma().tick(currentCycle);

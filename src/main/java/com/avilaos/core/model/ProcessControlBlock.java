@@ -51,6 +51,8 @@ public class ProcessControlBlock {
     private int arrivalCycle;
     private int startCycle;
     private int completionCycle;
+    /** Ciclos acumulados sin ejecutar (listo o bloqueado) desde su admisión. */
+    private int waitingTime;
 
     // Registros hardware simulados
     private int programCounter;
@@ -479,6 +481,15 @@ public class ProcessControlBlock {
 
     public void setRemainingDeadline(int remainingDeadline) {
         this.remainingDeadline = remainingDeadline;
+    }
+
+    public int getWaitingTime() {
+        return waitingTime;
+    }
+
+    /** Suma un ciclo de espera (listo o bloqueado sin ejecutar). */
+    public void incrementWaitingTime() {
+        this.waitingTime++;
     }
 
     public int getArrivalCycle() {

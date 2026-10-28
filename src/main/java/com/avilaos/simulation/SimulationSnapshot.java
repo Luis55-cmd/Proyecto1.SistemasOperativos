@@ -14,7 +14,9 @@ public final class SimulationSnapshot {
     public final int interval;
     public final Values<Node> computers;
     public final Values<BufferView> buffers;
-    public record Usage(int computerId, double percent) { }
+    public record Usage(int computerId, double percent, double throughput, double successRate, double waitTime) {
+        public Usage(int computerId, double percent) { this(computerId, percent, 0.0, 0.0, 0.0); }
+    }
     public record Sample(int cycle, Values<Usage> usage) { }
     public final Values<Sample> history;
     public static final class Values<T> {
@@ -54,7 +56,11 @@ public final class SimulationSnapshot {
         public QueueView getBlockedQueue() { return blockedQueue; }
         public QueueView getEndedQueue() { return endedQueue; }
     }
-    public record Node(int id, String name, SchedulingPolicyType politica, int quantum, CpuView cpu, MemoryView memoryManager, RamView ram, KernelView kernel, int ciclosActivos, int ciclosObservados, int procesosCompletados, int procesosFinalizados, int deadlinesCumplidos, int totalTiempoRespuesta) {
+    public record Node(int id, String name, SchedulingPolicyType politica, int quantum, CpuView cpu, MemoryView memoryManager, RamView ram, KernelView kernel, int ciclosActivos, int ciclosObservados, int procesosCompletados, int procesosFinalizados, int deadlinesCumplidos, int totalTiempoRespuesta, int totalTiempoEspera) {
+        public Node(int id, String name, SchedulingPolicyType politica, int quantum, CpuView cpu, MemoryView memoryManager, RamView ram, KernelView kernel, int ciclosActivos, int ciclosObservados, int procesosCompletados, int procesosFinalizados, int deadlinesCumplidos, int totalTiempoRespuesta) {
+            this(id, name, politica, quantum, cpu, memoryManager, ram, kernel, ciclosActivos, ciclosObservados, procesosCompletados, procesosFinalizados, deadlinesCumplidos, totalTiempoRespuesta, 0);
+        }
+        public int getTotalTiempoEspera() { return totalTiempoEspera; }
         public int getId() { return id; }
         public String getName() { return name; }
         public SchedulingPolicyType getPolitica() { return politica; }
@@ -101,7 +107,7 @@ public final class SimulationSnapshot {
             copiedNodes[i]=new Node(c.getId(),c.getName(),c.getPolitica(),c.getQuantum(),cpu,
                     new MemoryView(c.getMemoryManager().getTotalMemory(),c.getMemoryManager().getUsedMemory()),
                     new RamView(c.getRam().getTotalSize()),kernel,c.getCiclosActivos(),c.getCiclosObservados(),
-                    c.getProcesosCompletados(),c.getProcesosFinalizados(),c.getDeadlinesCumplidos(),c.getTotalTiempoRespuesta());
+                    c.getProcesosCompletados(),c.getProcesosFinalizados(),c.getDeadlinesCumplidos(),c.getTotalTiempoRespuesta(),c.getTotalTiempoEspera());
         }
         Object[] copiedBuffers=new Object[sources.size()];
         for(int i=0;i<sources.size();i++) {
@@ -115,7 +121,10 @@ public final class SimulationSnapshot {
         Object[] usages=new Object[computers.size()];
         for(int i=0;i<usages.length;i++) {
             Node node=computers.get(i);
-            usages[i]=new Usage(node.id(),node.ciclosObservados()==0 ? 0.0 : 100.0*node.ciclosActivos()/node.ciclosObservados());
+            usages[i]=new Usage(node.id(),node.ciclosObservados()==0 ? 0.0 : 100.0*node.ciclosActivos()/node.ciclosObservados(),
+                    node.ciclosObservados()==0 ? 0.0 : (double)node.procesosCompletados()/node.ciclosObservados(),
+                    node.procesosFinalizados()==0 ? 0.0 : 100.0*node.deadlinesCumplidos()/node.procesosFinalizados(),
+                    node.procesosCompletados()==0 ? 0.0 : (double)node.totalTiempoEspera()/node.procesosCompletados());
         }
         int retained=previous!=null && previous.session==session && previous.cycle<=cycle ? previous.history.size() : 0;
         if(retained>0 && previous.cycle==cycle) retained--;

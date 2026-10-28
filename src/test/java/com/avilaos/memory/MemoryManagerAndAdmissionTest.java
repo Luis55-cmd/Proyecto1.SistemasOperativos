@@ -89,6 +89,8 @@ public class MemoryManagerAndAdmissionTest {
         // Al terminar P1, se debe liberar sus 300 MB y automáticamente admitir a P2
         kernel.terminateProcess(comp, p1);
 
+        if (p1.getAssignedMemory() != 0 || p1.getRequiredMemory() != 300)
+            throw new AssertionError("La memoria requerida debe sobrevivir a la liberación");
         if (p1.getState() != ProcessState.SALIENTE) throw new AssertionError("P1 debe estar SALIENTE");
         if (kernel.getEndedQueue().size() != 1) throw new AssertionError("endedQueue debe tener a P1");
 

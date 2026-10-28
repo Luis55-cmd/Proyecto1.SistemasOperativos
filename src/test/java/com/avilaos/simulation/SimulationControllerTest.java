@@ -130,6 +130,10 @@ public class SimulationControllerTest {
                 String.valueOf(buf.getId()), 1, 1
         );
 
+        // Precondición: terminó su instrucción de trabajo local.
+        prod.setSyncPhase(ProcessControlBlock.SyncPhase.WAIT_SLOT);
+        prod.setProgramCounter(1);
+        prod.setMemoryAddressRegister(1);
         // Tick 1: Despacha en c2, detecta acceso remoto y se bloquea con demora restante 2
         controller.stepSimulation();
         if (prod.getState() != ProcessState.BLOQUEADO) throw new AssertionError("Debe estar BLOQUEADO en ciclo 1");
@@ -166,6 +170,10 @@ public class SimulationControllerTest {
                 "Prod0", c2_0.getId(), ProcessType.PRODUCER, 10, 10, 1, 100,
                 String.valueOf(buf0.getId()), 1, 1
         );
+        // Precondición: terminó su instrucción de trabajo local.
+        prod0.setSyncPhase(ProcessControlBlock.SyncPhase.WAIT_SLOT);
+        prod0.setProgramCounter(1);
+        prod0.setMemoryAddressRegister(1);
         controller.stepSimulation();
         if (prod0.getState() == ProcessState.BLOQUEADO && prod0.getBlockReason() == BlockReason.NETWORK_LATENCY) {
             throw new AssertionError("Con latencia 0 no debe bloquearse por NETWORK_LATENCY");
@@ -181,6 +189,10 @@ public class SimulationControllerTest {
                 "Prod1", c2_1.getId(), ProcessType.PRODUCER, 10, 10, 1, 100,
                 String.valueOf(buf1.getId()), 1, 1
         );
+        // Precondición: terminó su instrucción de trabajo local.
+        prod1.setSyncPhase(ProcessControlBlock.SyncPhase.WAIT_SLOT);
+        prod1.setProgramCounter(1);
+        prod1.setMemoryAddressRegister(1);
         controller.stepSimulation();
         if (prod1.getState() != ProcessState.BLOQUEADO || prod1.getNetworkDelayRemaining() != 1) {
             throw new AssertionError("Con latencia 1 debe bloquearse con demora 1");
@@ -200,6 +212,10 @@ public class SimulationControllerTest {
                 "ProdDeadline", c2_d.getId(), ProcessType.PRODUCER, 10, 10, 1, 2,
                 String.valueOf(bufd.getId()), 1, 1
         );
+        // Precondición: terminó su instrucción de trabajo local.
+        prodD.setSyncPhase(ProcessControlBlock.SyncPhase.WAIT_SLOT);
+        prodD.setProgramCounter(1);
+        prodD.setMemoryAddressRegister(1);
         controller.stepSimulation(); // Ciclo 1: Bloqueado por red, deadline 2 -> 1
         if (prodD.getState() != ProcessState.BLOQUEADO) throw new AssertionError("Debe estar bloqueado");
         controller.stepSimulation(); // Ciclo 2: Deadline vence -> SALIENTE
@@ -223,6 +239,10 @@ public class SimulationControllerTest {
         ProcessControlBlock p1 = controller.createProcess("P1", c2_m.getId(), ProcessType.PRODUCER, 10, 10, 1, 100, String.valueOf(bufm.getId()), 1, 1);
         ProcessControlBlock p2 = controller.createProcess("P2", c2_m.getId(), ProcessType.PRODUCER, 10, 10, 1, 100, String.valueOf(bufm.getId()), 1, 1);
 
+        for (ProcessControlBlock p : new ProcessControlBlock[]{p1, p2}) {
+            p.setSyncPhase(ProcessControlBlock.SyncPhase.WAIT_SLOT);
+            p.setProgramCounter(1); p.setMemoryAddressRegister(1);
+        }
         controller.stepSimulation(); // P1 se bloquea por red (demora 2)
         controller.stepSimulation(); // P1 avanza a demora 1; P2 corre y se bloquea (demora 2)
         if (p1.getNetworkDelayRemaining() != 1) throw new AssertionError("P1 demora restante debe ser 1");
@@ -278,6 +298,7 @@ public class SimulationControllerTest {
         }
         if (buf1.getProduced() != 1) throw new AssertionError("P1 debe haber producido");
 
+        controller.stepSimulation(); // P2 ejecuta su trabajo de usuario
         // P2 intenta producir y se bloquea por WAITING_FULL_BUFFER
         controller.stepSimulation();
         if (p2.getState() != ProcessState.BLOQUEADO || p2.getBlockReason() != BlockReason.WAITING_FULL_BUFFER) {
@@ -336,13 +357,13 @@ public class SimulationControllerTest {
             throw new AssertionError("RAM usada inicial debe ser 55, actual: " + comp.getMemoryManager().getUsedMemory());
         }
 
-        // Avanzar 5 ticks: el productor completa sus 5 etapas (0, 1, 2, 3, 4) y termina
-        for (int i = 0; i < 5; i++) {
+        // Un tick de trabajo + cinco instrucciones del protocolo
+        for (int i = 0; i < 6; i++) {
             controller.stepSimulation();
         }
 
         if (prod.getState() != ProcessState.SALIENTE) {
-            throw new AssertionError("Productor debe estar en SALIENTE tras 5 ticks");
+            throw new AssertionError("Productor debe estar en SALIENTE tras 6 ticks");
         }
         if (comp.getKernel().getEndedQueue().size() != 1) {
             throw new AssertionError("endedQueue debe tener exactamente 1 entrada, actual: " + comp.getKernel().getEndedQueue().size());
@@ -443,12 +464,13 @@ public class SimulationControllerTest {
         // Productor A con deadline muy corto (2 ticks): muere antes de terminar la producción
         String bufId = String.valueOf(buf.getId());
         ProcessControlBlock prodA = controller.createProcess(
-                "ProdA", comp.getId(), ProcessType.PRODUCER, 10, 10, 1, 2, bufId, 1, 1);
+                "ProdA", comp.getId(), ProcessType.PRODUCER, 10, 10, 1, 3, bufId, 1, 1);
         if (prodA == null) throw new AssertionError("ProdA debe crearse");
 
-        // Tick 1: ProdA ejecuta etapa 0 (adquiere vacios → pasa a etapa 1)
+        controller.stepSimulation(); // Trabajo de usuario: aún no tiene permiso
+        // Tick 2: ProdA ejecuta wait(vacios)
         controller.stepSimulation();
-        // Tick 2: deadline vence → cleanupProcessResources cancela y devuelve vacios
+        // Tick 3: deadline vence → cancela y devuelve vacios
         controller.stepSimulation();
 
         // El permiso de vacios debe haberse recuperado

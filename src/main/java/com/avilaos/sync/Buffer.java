@@ -5,6 +5,8 @@
 package com.avilaos.sync;
 
 import com.avilaos.core.model.BlockReason;
+import com.avilaos.core.model.ProcessControlBlock.BufferPermit;
+import com.avilaos.core.model.ExecutionMode;
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.structures.*;
@@ -14,6 +16,124 @@ import java.util.concurrent.Semaphore;
  * @author rafr
  */
 public class Buffer {
+    public enum SemaphoreKind { MUTEX, VACIOS, LLENOS }
+
+    /**
+     * Ejecuta una instrucción wait, sin bloquear el hilo Java.
+     * Entrada: PCB ejecutando y semáforo de este buffer.
+     * Salida: true si obtuvo permiso; false si quedó en la cola de espera.
+     * PC/MAR avanzan una vez incluso si bloquea; no hay bucle de espera.
+     * Un estado inválido se rechaza antes de modificar PCB, permisos o colas.
+     * signal concede el permiso al PCB encolado antes de marcarlo listo.
+     * Ambas operaciones usan el monitor de este buffer.
+     */
+    public synchronized boolean semWait(ProcessControlBlock pcb, SemaphoreKind kind) {
+        if (pcb == null || kind == null) {
+            throw new IllegalArgumentException("wait requiere un PCB y un semáforo");
+        }
+        if (pcb.getState() != ProcessState.EJECUTANDO
+                || pcb.getBlockReason() != BlockReason.NONE || pcb.isTerminated()) {
+            throw new IllegalStateException("Solo un proceso ejecutando sin espera pendiente puede hacer wait");
+        }
+
+        Semaphore semaphore = switch (kind) {
+            case MUTEX -> mutex;
+            case VACIOS -> vacios;
+            case LLENOS -> llenos;
+        };
+        MyQueue<ProcessControlBlock> waiting = switch (kind) {
+            case MUTEX -> waitingMutex;
+            case VACIOS -> waitingVacios;
+            case LLENOS -> waitingLlenos;
+        };
+        BlockReason reason = switch (kind) {
+            case MUTEX -> BlockReason.WAITING_MUTEX;
+            case VACIOS -> BlockReason.WAITING_FULL_BUFFER;
+            case LLENOS -> BlockReason.WAITING_EMPTY_BUFFER;
+        };
+
+        pcb.validateBufferPermitAcquisition(id, BufferPermit.valueOf(kind.name()));
+        pcb.setMode(ExecutionMode.KERNEL);
+        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
+        pcb.setMemoryAddressRegister(pcb.getMemoryAddressRegister() + 1);
+
+        if (semaphore.tryAcquire()) {
+            pcb.grantBufferPermit(id, BufferPermit.valueOf(kind.name()));
+            return true;
+        }
+
+        waiting.enqueue(pcb);
+        pcb.setBlockReason(reason);
+        pcb.setState(ProcessState.BLOQUEADO);
+        return false;
+    }
+
+    /**
+     * Ejecuta signal como una instrucción del emisor, bajo el mismo monitor que wait.
+     * Entradas: emisor ejecutando y semáforo de este buffer.
+     * Salida: PCB al que se transfirió el permiso, o null si quedó disponible.
+     * Avanza solo PC/MAR del emisor. El receptor queda LISTO, sin repetir wait.
+     * Descarta entradas de espera obsoletas hasta hallar una válida o vaciar la cola.
+     * Valida titularidad del mutex o notificación pendiente tras insertar/extraer.
+     * El driver continúa en la fase siguiente sin reintentar wait.
+     */
+    public synchronized ProcessControlBlock semSignal(ProcessControlBlock emitter, SemaphoreKind kind) {
+        if (emitter == null || kind == null) {
+            throw new IllegalArgumentException("signal requiere un PCB y un semáforo");
+        }
+        if (emitter.getState() != ProcessState.EJECUTANDO
+                || emitter.getBlockReason() != BlockReason.NONE || emitter.isTerminated()) {
+            throw new IllegalStateException("Solo un proceso ejecutando sin espera pendiente puede hacer signal");
+        }
+        emitter.validateBufferSignal(id, BufferPermit.valueOf(kind.name()));
+        emitter.recordBufferSignal(id, BufferPermit.valueOf(kind.name()));
+        emitter.setMode(ExecutionMode.KERNEL);
+        emitter.setProgramCounter(emitter.getProgramCounter() + 1);
+        emitter.setMemoryAddressRegister(emitter.getMemoryAddressRegister() + 1);
+
+        return transferOrRelease(kind);
+    }
+
+    /** Comparte la transferencia con la limpieza; no ejecuta instrucciones del PCB. */
+    private ProcessControlBlock transferOrRelease(SemaphoreKind kind) {
+        Semaphore semaphore = switch (kind) {
+            case MUTEX -> mutex; case VACIOS -> vacios; case LLENOS -> llenos;
+        };
+        MyQueue<ProcessControlBlock> waiting = switch (kind) {
+            case MUTEX -> waitingMutex; case VACIOS -> waitingVacios; case LLENOS -> waitingLlenos;
+        };
+        BlockReason reason = switch (kind) {
+            case MUTEX -> BlockReason.WAITING_MUTEX;
+            case VACIOS -> BlockReason.WAITING_FULL_BUFFER;
+            case LLENOS -> BlockReason.WAITING_EMPTY_BUFFER;
+        };
+        while (!waiting.isEmpty()) {
+            ProcessControlBlock receiver = waiting.dequeue();
+            if (receiver.isTerminated() || receiver.getState() != ProcessState.BLOQUEADO
+                    || receiver.getBlockReason() != reason) continue;
+            receiver.grantBufferPermit(id, BufferPermit.valueOf(kind.name()));
+            receiver.setBlockReason(BlockReason.NONE);
+            receiver.setState(ProcessState.LISTO);
+            return receiver;
+        }
+        semaphore.release();
+        return null;
+    }
+
+    /** Cancelación: devuelve reserva no usada o publica la operación ya realizada.
+     * Idempotente; no avanza PC/MAR. El kernel retira luego al PCB del sistema.
+     */
+    public synchronized void cleanupPermits(ProcessControlBlock pcb) {
+        removeWaitingProcess(pcb);
+        if (pcb.getPermitBufferId() != id) return;
+        if (pcb.holdsBufferMutex()) transferOrRelease(SemaphoreKind.MUTEX);
+        if (pcb.getReservedBufferSlot() != null)
+            transferOrRelease(SemaphoreKind.valueOf(pcb.getReservedBufferSlot().name()));
+        if (pcb.getPendingBufferSignal() != null)
+            transferOrRelease(SemaphoreKind.valueOf(pcb.getPendingBufferSignal().name()));
+        pcb.clearBufferPermits();
+    }
+
     Semaphore mutex;
     Semaphore vacios;
     Semaphore llenos;

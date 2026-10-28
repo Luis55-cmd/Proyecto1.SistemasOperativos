@@ -1,11 +1,25 @@
 package com.avilaos.core.kernel;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.Semaphore;
 
 /**
  * Pruebas unitarias para GlobalClock (Fase 2).
  */
 public class GlobalClockTest {
+    private static class TickCounter {
+        private int value;
+        private final Semaphore mutex = new Semaphore(1);
+        TickCounter(int initial) { value = initial; }
+        int get() {
+            mutex.acquireUninterruptibly();
+            try { return value; } finally { mutex.release(); }
+        }
+        void incrementAndGet() {
+            mutex.acquireUninterruptibly();
+            try { value++; } finally { mutex.release(); }
+        }
+    }
+
 
     public static void main(String[] args) throws InterruptedException {
         testSingletonAndStep();
@@ -22,7 +36,7 @@ public class GlobalClockTest {
         clock1.reset();
         if (clock1.getCycleCounter() != 0) throw new AssertionError("cycleCounter debe iniciar en 0");
 
-        AtomicInteger tickCount = new AtomicInteger(0);
+        TickCounter tickCount = new TickCounter(0);
         IClockTickable subscriber = cycle -> tickCount.incrementAndGet();
 
         clock1.addSubscriber(subscriber);
@@ -42,8 +56,8 @@ public class GlobalClockTest {
         GlobalClock clock = GlobalClock.getInstance();
         clock.reset();
 
-        AtomicInteger cpu1Ticks = new AtomicInteger(0);
-        AtomicInteger cpu2Ticks = new AtomicInteger(0);
+        TickCounter cpu1Ticks = new TickCounter(0);
+        TickCounter cpu2Ticks = new TickCounter(0);
 
         IClockTickable cpu1 = cycle -> {
             if (cycle != cpu1Ticks.get() + 1) throw new IllegalStateException("Ciclo inconsistente en CPU1");
@@ -73,7 +87,7 @@ public class GlobalClockTest {
         clock.reset();
         clock.setCycleDurationMs(30); // Ciclos rápidos de 30ms para pruebas
 
-        AtomicInteger ticks = new AtomicInteger(0);
+        TickCounter ticks = new TickCounter(0);
         clock.addSubscriber(cycle -> ticks.incrementAndGet());
 
         clock.start();

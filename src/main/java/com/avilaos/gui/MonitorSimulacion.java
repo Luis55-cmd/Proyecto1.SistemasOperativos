@@ -24,7 +24,20 @@ import static com.avilaos.gui.PanelPrincipal.*;
 public final class MonitorSimulacion extends JPanel {
     private final SimulationController controller;
     private SimulationSnapshot view;
-    private final JTabbedPane pestanas = new JTabbedPane(JTabbedPane.BOTTOM, JTabbedPane.SCROLL_TAB_LAYOUT);
+    private final JTabbedPane pestanas = new JTabbedPane(JTabbedPane.BOTTOM, JTabbedPane.SCROLL_TAB_LAYOUT) {
+        @Override
+        public Dimension getPreferredSize() {
+            Dimension d = super.getPreferredSize();
+            Component sel = getSelectedComponent();
+            if (sel != null) {
+                Dimension selPref = sel.getPreferredSize();
+                Insets insets = getInsets();
+                int tabHeaderHeight = 38;
+                d.height = selPref.height + insets.top + insets.bottom + tabHeaderHeight;
+            }
+            return d;
+        }
+    };
     private final JPanel tarjetas = new JPanel(new GridLayout(0, 2, 16, 16));
     private final JLabel reloj = texto("Reloj global · ciclo 0", 20, ACENTO, true);
     private final JLabel estado = texto("", 13, GRIS, false);
@@ -78,7 +91,8 @@ public final class MonitorSimulacion extends JPanel {
     private final JPanel panelDetalleColas = new JPanel();
 
     // --- Componentes para visualizar los Buffers Globales ---
-    private final DefaultTableModel modeloBuffers = new DefaultTableModel(new Object[]{"Buffer", "Host", "Latencia (ticks)", "Elementos", "Capacidad", "Semáforos (M, L, V)", "Procesos Bloqueados"}, 0) {
+    private final DefaultTableModel modeloBuffers = new DefaultTableModel(
+            new Object[]{"Buffer", "Host", "Latencia (ticks)", "Elementos", "Capacidad", "Mutex", "Llenos", "Vac\u00edos", "Procesos Bloqueados"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
     private final JTable tablaBuffers = new JTable(modeloBuffers);
@@ -203,7 +217,7 @@ public final class MonitorSimulacion extends JPanel {
             if (sel != null && sel.startsWith("Buffer ")) {
                 try {
                     spinnerNuevaLatencia.commitEdit();
-                    int endIdx = sel.indexOf(" (Host");
+                    int endIdx = sel.indexOf(" (");
                     if (endIdx == -1) endIdx = sel.length();
                     int bufId = Integer.parseInt(sel.substring("Buffer ".length(), endIdx).trim());
                     int nuevaLat = (Integer) spinnerNuevaLatencia.getValue();
@@ -255,8 +269,8 @@ public final class MonitorSimulacion extends JPanel {
         pestanas.addChangeListener(e -> actualizarDetalleColasGlobal());
         
         areaLog.setEditable(false);
-        areaLog.setBackground(new Color(25, 25, 25));
-        areaLog.setForeground(new Color(0, 200, 0));
+        areaLog.setBackground(Color.WHITE);
+        areaLog.setForeground(TINTA);
         areaLog.setFont(new Font("Monospaced", Font.PLAIN, 12));
         areaLog.setMargin(new Insets(5, 5, 5, 5));
         
@@ -264,6 +278,8 @@ public final class MonitorSimulacion extends JPanel {
         caret.setUpdatePolicy(DefaultCaret.ALWAYS_UPDATE);
         
         scrollLog.setPreferredSize(new Dimension(Integer.MAX_VALUE, 140));
+        scrollLog.setBorder(BorderFactory.createLineBorder(BORDE));
+        scrollLog.getViewport().setBackground(Color.WHITE);
         
         panelLog.setOpaque(false);
         JLabel tituloLog = texto("LOG DE EVENTOS DEL SISTEMA", 12, TINTA, true);
@@ -655,17 +671,25 @@ public final class MonitorSimulacion extends JPanel {
             String nombre = "Buffer " + b.getId();
             int elementos = b.getDatos().size();
             int capacidad = b.getStorage();
-            
-            String semaforos = String.format("M:%d, L:%d, V:%d", 
-                b.getMutex().availablePermits(), 
-                b.getLlenos().availablePermits(), 
-                b.getVacios().availablePermits());
-                
-            String bloqueados = b.getBlockedProcessesAsString();
-            
             int hostId = b.getIdComp();
+            
+            String hostNombre = "Host " + hostId;
+            if (view.computers != null) {
+                for (int cIdx = 0; cIdx < view.computers.size(); cIdx++) {
+                    var comp = view.computers.get(cIdx);
+                    if (comp.getId() == hostId) {
+                        hostNombre = comp.getName() + " (" + hostId + ")";
+                        break;
+                    }
+                }
+            }
+            
+            int m = b.getMutex().availablePermits();
+            int l = b.getLlenos().availablePermits();
+            int v = b.getVacios().availablePermits();
+            String bloqueados = b.getBlockedProcessesAsString();
             int latencia = b.getLatency();
-            modeloBuffers.addRow(new Object[]{nombre, "Host " + hostId, latencia + " ticks", elementos, capacidad, semaforos, bloqueados});
+            modeloBuffers.addRow(new Object[]{nombre, hostNombre, latencia + " ticks", elementos, capacidad, m, l, v, bloqueados});
         }
 
         // Actualizar combo de buffers para modificar latencia en simulaciÃ³n
@@ -675,7 +699,18 @@ public final class MonitorSimulacion extends JPanel {
         int indiceSeleccion = -1;
         for (int i = 0; i < buffers.size(); i++) {
             var b = buffers.get(i);
-            String item = "Buffer " + b.getId() + " (Host " + b.getIdComp() + ")";
+            int hostId = b.getIdComp();
+            String hostNombre = "Host " + hostId;
+            if (view.computers != null) {
+                for (int cIdx = 0; cIdx < view.computers.size(); cIdx++) {
+                    var comp = view.computers.get(cIdx);
+                    if (comp.getId() == hostId) {
+                        hostNombre = comp.getName() + " (" + hostId + ")";
+                        break;
+                    }
+                }
+            }
+            String item = "Buffer " + b.getId() + " (" + hostNombre + ")";
             comboBuffersLatencia.addItem(item);
             if (seleccionPrevia != null && seleccionPrevia.startsWith("Buffer " + b.getId() + " ")) {
                 indiceSeleccion = i;
@@ -708,94 +743,116 @@ public final class MonitorSimulacion extends JPanel {
         var computadores = view.computers;
         int cantidad = computadores.size();
         
-        if (cantidad == 0 || pestanas.getSelectedComponent() == panelMetricas) {
+        if (cantidad == 0 || seleccion == 0 || pestanas.getSelectedComponent() == panelMetricas) {
             panelDetalleColas.setVisible(false);
+            if (cantidad > 0) {
+                poblarTablasColas(0);
+            }
+            pestanas.revalidate();
+            pestanas.repaint();
+            Container parent = pestanas.getParent();
+            if (parent != null) {
+                parent.revalidate();
+                parent.repaint();
+            }
             return;
         }
         
         panelDetalleColas.setVisible(true);
-        int compIndex = seleccion > 0 ? seleccion - 1 : 0;
-        
+        int compIndex = seleccion - 1;
         if (compIndex < cantidad) {
-            Node c = computadores.get(compIndex);
-            var kernel = c.getKernel();
-            
-            tituloColas.setText("DETALLE DE COLAS DEL KERNEL — " + c.getName() + " (ID " + c.getId() + ")");
-            
-            // 1. Nuevos
-            modeloNuevos.setRowCount(0);
-            var nuevos = kernel.getNewQueue().getProcesses();
-            for (int i = 0; i < nuevos.size(); i++) {
-                var p = nuevos.get(i);
-                modeloNuevos.addRow(new Object[]{
-                    p.getId(),
-                    p.getName() != null ? p.getName() : "P" + p.getId(),
-                    formatoTipo(p.getType()),
-                    p.getPriority(),
-                    p.getAssignedMemory(),
-                    p.getTotalInstructions(),
-                    p.getDeadline()
-                });
-            }
-            tituloNuevos.setText("COLA DE NUEVOS (NEW) · " + nuevos.size() + " procesos");
-            
-            // 2. Listos
-            modeloListos.setRowCount(0);
-            var listos = kernel.getReadyQueue().getProcesses();
-            for (int i = 0; i < listos.size(); i++) {
-                var p = listos.get(i);
-                modeloListos.addRow(new Object[]{
-                    p.getId(),
-                    p.getName() != null ? p.getName() : "P" + p.getId(),
-                    formatoTipo(p.getType()),
-                    p.getPriority(),
-                    p.getRemainingTime(),
-                    p.getRemainingDeadline(),
-                    p.getProgramCounter(),
-                    p.getMemoryAddressRegister(),
-                    p.getAssignedMemory()
-                });
-            }
-            tituloListos.setText("COLA DE LISTOS (READY) · " + listos.size() + " procesos");
-
-            // 3. Bloqueados
-            modeloBloqueados.setRowCount(0);
-            var bloqueados = kernel.getBlockedQueue().getProcesses();
-            for (int i = 0; i < bloqueados.size(); i++) {
-                var p = bloqueados.get(i);
-                String buf = p.getTargetBufferId() != null 
-                    ? (p.getTargetBufferId().startsWith("Buffer") ? p.getTargetBufferId() : "Buffer " + p.getTargetBufferId()) 
-                    : "-";
-                modeloBloqueados.addRow(new Object[]{
-                    p.getId(),
-                    p.getName() != null ? p.getName() : "P" + p.getId(),
-                    formatoTipo(p.getType()),
-                    formatoMotivoBloqueo(p.getBlockReason()),
-                    buf,
-                    p.getPriority(),
-                    p.getRemainingTime(),
-                    p.getRemainingDeadline(),
-                    p.getAssignedMemory()
-                });
-            }
-            tituloBloqueados.setText("COLA DE BLOQUEADOS (BLOCKED) · " + bloqueados.size() + " procesos");
-
-            // 4. Terminados
-            modeloTerminados.setRowCount(0);
-            var terminados = kernel.getEndedQueue().getProcesses();
-            for (int i = 0; i < terminados.size(); i++) {
-                var p = terminados.get(i);
-                modeloTerminados.addRow(new Object[]{
-                    p.getId(),
-                    p.getName() != null ? p.getName() : "P" + p.getId(),
-                    formatoTipo(p.getType()),
-                    p.getPriority(),
-                    p.getTotalInstructions(),
-                    p.getAssignedMemory()
-                });
-            }
-            tituloTerminados.setText("COLA DE TERMINADOS (TERMINATED) · " + terminados.size() + " procesos");
+            poblarTablasColas(compIndex);
         }
+        pestanas.revalidate();
+        pestanas.repaint();
+        Container parent = pestanas.getParent();
+        if (parent != null) {
+            parent.revalidate();
+            parent.repaint();
+        }
+    }
+
+    private void poblarTablasColas(int compIndex) {
+        var computadores = view.computers;
+        if (compIndex >= computadores.size()) return;
+        Node c = computadores.get(compIndex);
+        var kernel = c.getKernel();
+        
+        tituloColas.setText("DETALLE DE COLAS DEL KERNEL " + c.getName() + " (ID " + c.getId() + ")");
+        
+        // 1. Nuevos
+        modeloNuevos.setRowCount(0);
+        var nuevos = kernel.getNewQueue().getProcesses();
+        for (int i = 0; i < nuevos.size(); i++) {
+            var p = nuevos.get(i);
+            modeloNuevos.addRow(new Object[]{
+                p.getId(),
+                p.getName() != null ? p.getName() : "P" + p.getId(),
+                formatoTipo(p.getType()),
+                p.getPriority(),
+                p.getAssignedMemory(),
+                p.getTotalInstructions(),
+                p.getDeadline()
+            });
+        }
+        tituloNuevos.setText("COLA DE NUEVOS (NEW) - " + nuevos.size() + " procesos");
+        
+        // 2. Listos
+        modeloListos.setRowCount(0);
+        var listos = kernel.getReadyQueue().getProcesses();
+        for (int i = 0; i < listos.size(); i++) {
+            var p = listos.get(i);
+            modeloListos.addRow(new Object[]{
+                p.getId(),
+                p.getName() != null ? p.getName() : "P" + p.getId(),
+                formatoTipo(p.getType()),
+                p.getPriority(),
+                p.getRemainingTime(),
+                p.getRemainingDeadline(),
+                p.getProgramCounter(),
+                p.getMemoryAddressRegister(),
+                p.getAssignedMemory() 
+            });
+        }
+        tituloListos.setText("COLA DE LISTOS (READY) - " + listos.size() + " procesos");
+
+        // 3. Bloqueados
+        modeloBloqueados.setRowCount(0);
+        var bloqueados = kernel.getBlockedQueue().getProcesses();
+        for (int i = 0; i < bloqueados.size(); i++) {
+            var p = bloqueados.get(i);
+            String buf = p.getTargetBufferId() != null 
+                ? (p.getTargetBufferId().startsWith("Buffer") ? p.getTargetBufferId() : "Buffer " + p.getTargetBufferId()) 
+                : "-";
+            modeloBloqueados.addRow(new Object[]{
+                p.getId(),
+                p.getName() != null ? p.getName() : "P" + p.getId(),
+                formatoTipo(p.getType()),
+                formatoMotivoBloqueo(p.getBlockReason()),
+                buf,
+                p.getPriority(),
+                p.getRemainingTime(),
+                p.getRemainingDeadline(),
+                p.getAssignedMemory()
+            });
+        }
+        tituloBloqueados.setText("COLA DE BLOQUEADOS (BLOCKED) - " + bloqueados.size() + " procesos");
+
+        // 4. Terminados
+        modeloTerminados.setRowCount(0);
+        var terminados = kernel.getEndedQueue().getProcesses();
+        for (int i = 0; i < terminados.size(); i++) {
+            var p = terminados.get(i);
+            modeloTerminados.addRow(new Object[]{
+                p.getId(),
+                p.getName() != null ? p.getName() : "P" + p.getId(),
+                formatoTipo(p.getType()),
+                p.getPriority(),
+                p.getTotalInstructions(),
+                p.getAssignedMemory()
+            });
+        }
+        tituloTerminados.setText("COLA DE TERMINADOS (TERMINATED) - " + terminados.size() + " procesos");
     }
 
     private void reconstruirPestanas() {
@@ -818,18 +875,18 @@ public final class MonitorSimulacion extends JPanel {
             resumenes[i] = new VistaComputador(c, false, view.session);
             detalles[i] = new VistaComputador(c, true, view.session);
             int indice = i + 1;
-            JButton abrir = accion("Ver detalle →", false);
+            JButton abrir = accion("Ver detalle", false);
             abrir.addActionListener(e -> pestanas.setSelectedIndex(indice));
             resumenes[i].add(Box.createVerticalStrut(14));
             resumenes[i].add(abrir);
             tarjetas.add(resumenes[i]);
             
-            // Envolver la vista de detalle directamente en un ScrollPane sin contenedores intermedios que estiren la vista
-            JScrollPane scrollDetalle = new JScrollPane(detalles[i]);
-            scrollDetalle.setBorder(null);
-            scrollDetalle.getVerticalScrollBar().setUnitIncrement(16);
+            detalles[i].setPreferredSize(new Dimension(540, 240));
+            JPanel wrapDetalle = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            wrapDetalle.setOpaque(false);
+            wrapDetalle.add(detalles[i]);
             
-            pestanas.addTab(c.getName(), scrollDetalle);
+            pestanas.addTab(c.getName(), wrapDetalle);
             
             if (ids[i] == seleccionado) pestanas.setSelectedIndex(indice);
         }

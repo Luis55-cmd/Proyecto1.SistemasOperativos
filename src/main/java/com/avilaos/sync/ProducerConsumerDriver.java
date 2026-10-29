@@ -16,6 +16,9 @@ import com.avilaos.core.model.ProcessType;
 public class ProducerConsumerDriver {
 
     private final NetworkSimulator networkSimulator;
+    private java.util.function.Consumer<String> eventListener;
+    public void setEventListener(java.util.function.Consumer<String> listener) { this.eventListener = listener; }
+    private void event(String message) { if (eventListener != null) eventListener.accept(message); }
 
     public ProducerConsumerDriver(int latencia) {
         this.networkSimulator = new NetworkSimulator(latencia);
@@ -92,6 +95,9 @@ public class ProducerConsumerDriver {
                     if (producer) buffer.produce(pcb.getId());
                     else buffer.consume();
                     pcb.recordBufferOperation(buffer.getId());
+                    String bufName = (buffer.getId() > 0 ? "B" + buffer.getId() : "Buffer " + buffer.getId());
+                    String modoAcceso = (pcb.getComputerId() != buffer.getIdComp()) ? "remota" : "local";
+                    event("Proceso " + pcb.getName() + " accede al buffer " + bufName + " de forma " + modoAcceso);
                     advanceInstruction(pcb);
                     pcb.setSyncPhase(ProcessControlBlock.SyncPhase.SIGNAL_MUTEX);
                 }

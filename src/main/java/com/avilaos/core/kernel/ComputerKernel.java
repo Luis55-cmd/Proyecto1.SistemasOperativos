@@ -36,12 +36,18 @@ public class ComputerKernel {
     public void setEventListener(java.util.function.Consumer<String> listener) { this.eventListener = listener; }
     private void event(String message) { if (eventListener != null) eventListener.accept(message); }
     private String proceso(ProcessControlBlock p) { return p.getName() + " (ID " + p.getId() + ", computador " + p.getComputerId() + ")"; }
+    private String formatBuffer(ProcessControlBlock p) {
+        String b = p.getTargetBufferId();
+        if (b == null) return "B1";
+        if (b.startsWith("B") || b.startsWith("Buffer ")) return b;
+        return "B" + b;
+    }
     private String motivo(ProcessControlBlock p) {
         return switch (p.getBlockReason()) {
-            case WAITING_MUTEX -> "mutex del buffer " + p.getTargetBufferId();
-            case WAITING_EMPTY_BUFFER -> "buffer " + p.getTargetBufferId() + " sin elementos (semáforo llenos)";
-            case WAITING_FULL_BUFFER -> "buffer " + p.getTargetBufferId() + " sin espacios (semáforo vacíos)";
-            case NETWORK_LATENCY -> "latencia de red para buffer " + p.getTargetBufferId();
+            case WAITING_MUTEX -> "en el sem\u00e1foro 'mutex' del buffer " + formatBuffer(p);
+            case WAITING_EMPTY_BUFFER -> "en el sem\u00e1foro 'lleno' del buffer " + formatBuffer(p) + " (sin elementos (sem\u00e1foro llenos))";
+            case WAITING_FULL_BUFFER -> "en el sem\u00e1foro 'vac\u00edo' del buffer " + formatBuffer(p) + " (sin espacios (sem\u00e1foro vac\u00edos))";
+            case NETWORK_LATENCY -> "latencia de red para buffer " + formatBuffer(p);
             case WAITING_IO -> "espera de E/S";
             default -> "motivo no especificado";
         };
@@ -229,7 +235,7 @@ public class ComputerKernel {
 
         if (next != null) {
             if (next != currentRunning) {
-                if (currentRunning != null) event(com.getName() + " desaloja " + proceso(currentRunning));
+                if (currentRunning != null) event(com.getName() + " desaloja el proceso " + currentRunning.getName());
                 event(com.getName() + " selecciona " + proceso(next) + " (política " + com.getPolitica() + ")");
             }
             // Guardar contexto del proceso desalojado si fue reemplazado por otro proceso

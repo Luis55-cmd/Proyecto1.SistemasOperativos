@@ -53,6 +53,10 @@ public class ProcessControlBlock {
     private int completionCycle;
     /** Ciclos acumulados sin ejecutar (listo o bloqueado) desde su admisión. */
     private int waitingTime;
+    private int readyWaitTicks;
+    private int blockedWaitTicks;
+    private int semaphoreWaitTicks;
+    private int lastBlockedSampleCycle = -1;
 
     // Registros hardware simulados
     private int programCounter;
@@ -491,6 +495,24 @@ public class ProcessControlBlock {
     public void incrementWaitingTime() {
         this.waitingTime++;
     }
+
+    /** Registra el estado bloqueado al inicio del ciclo global, antes de señales entre computadores. */
+    public void sampleBlockedWait(int cycle) {
+        if (state != ProcessState.BLOQUEADO || lastBlockedSampleCycle == cycle) return;
+        lastBlockedSampleCycle = cycle;
+        blockedWaitTicks++;
+        if (blockReason == BlockReason.WAITING_MUTEX || blockReason == BlockReason.WAITING_EMPTY_BUFFER
+                || blockReason == BlockReason.WAITING_FULL_BUFFER) semaphoreWaitTicks++;
+    }
+
+    /** El proceso espera listo si no ejecutó ni se contó bloqueado en este ciclo. */
+    public void sampleReadyWait(int cycle) {
+        if (state == ProcessState.LISTO && lastBlockedSampleCycle != cycle) readyWaitTicks++;
+    }
+
+    public int getReadyWaitTicks() { return readyWaitTicks; }
+    public int getBlockedWaitTicks() { return blockedWaitTicks; }
+    public int getSemaphoreWaitTicks() { return semaphoreWaitTicks; }
 
     public int getArrivalCycle() {
         return arrivalCycle;

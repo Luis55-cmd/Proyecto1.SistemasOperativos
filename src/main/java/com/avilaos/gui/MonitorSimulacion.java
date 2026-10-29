@@ -586,6 +586,8 @@ public final class MonitorSimulacion extends JPanel {
         @Override public boolean getScrollableTracksViewportHeight() { return false; }
     }
 
+    void limpiarLog() { areaLog.setText(""); }
+
     public void agregarLog(String mensaje) {
         SwingUtilities.invokeLater(() -> {
             areaLog.append(mensaje + "\n");

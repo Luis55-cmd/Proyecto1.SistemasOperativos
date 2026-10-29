@@ -638,6 +638,7 @@ public class ComputerKernel {
             if (w != null && w != executedThisCycle
                     && (w.getState() == ProcessState.LISTO || w.getState() == ProcessState.BLOQUEADO)) {
                 w.incrementWaitingTime();
+                w.sampleReadyWait(currentCycle);
             }
         }
 

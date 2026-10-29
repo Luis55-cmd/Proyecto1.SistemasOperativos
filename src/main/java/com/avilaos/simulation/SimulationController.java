@@ -47,7 +47,6 @@ public class SimulationController implements IClockTickable {
     private record LogEntry(long session, int cycle, String message) { }
     private final com.avilaos.core.structures.MyQueue<LogEntry> pendingLogs = new com.avilaos.core.structures.MyQueue<>();
     private boolean logPending;
-    private int omittedLogs;
     private volatile SimulationSnapshot snapshot;
     private volatile long session;
     private boolean refreshPending;
@@ -138,7 +137,6 @@ public class SimulationController implements IClockTickable {
 
         LogEntry event=new LogEntry(session,clock.getCycleCounter(),message);
         synchronized(logListeners) {
-            if(pendingLogs.size()==2000) {pendingLogs.dequeue(); omittedLogs++;}
             pendingLogs.enqueue(event);
             if(logPending) return;
             logPending=true;
@@ -150,17 +148,14 @@ public class SimulationController implements IClockTickable {
     private void flushLogs() {
         LogEntry[] batch;
         ILogListener[] listeners;
-        int omitted;
         synchronized(logListeners) {
             batch=new LogEntry[Math.min(100,pendingLogs.size())];
             for(int i=0;i<batch.length;i++) batch[i]=pendingLogs.dequeue();
             listeners=new ILogListener[logListeners.size()];
             for(int i=0;i<listeners.length;i++) listeners[i]=logListeners.get(i);
-            omitted=omittedLogs; omittedLogs=0;
         }
         try {
             for(ILogListener listener:listeners) {
-                if(omitted>0) listener.onLogAdded("[Log] "+omitted+" eventos omitidos por saturación");
                 for(LogEntry event:batch) if(event.session()==session)
                     listener.onLogAdded("[Ciclo "+event.cycle()+"] "+event.message());
             }
@@ -588,6 +583,18 @@ public class SimulationController implements IClockTickable {
         try {
         StringBuilder tickReport = new StringBuilder("CPU al finalizar ciclo -> ");
         boolean hayComputadores = false, hayCpuOcupada = false, hayProcesos = false, hayPendientes = false;
+
+        // Muestrear todos los bloqueos antes de ejecutar cualquier computador: un signal remoto
+        // no debe borrar la espera de este ciclo según el orden de los computadores.
+        for (int i = 0; i < computers.size(); i++) {
+            Computer computer = computers.get(i);
+            if (computer == null || computer.getKernel() == null) continue;
+            var processes = computer.getKernel().getProcessList();
+            for (int j = 0; j < processes.size(); j++) {
+                ProcessControlBlock process = processes.get(j);
+                if (process != null) process.sampleBlockedWait(currentCycle);
+            }
+        }
 
         for (int i = 0; i < this.computers.size(); i++) {
             Computer comp = this.computers.get(i);

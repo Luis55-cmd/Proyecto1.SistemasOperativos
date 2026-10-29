@@ -26,7 +26,7 @@ public class CPU implements IClockTickable {
         this.MAR = MAR;
         this.IR = IR;
         this.PCB = null;
-        this.mode = ExecutionMode.USER;
+        this.mode = ExecutionMode.KERNEL;
         
     }
 
@@ -36,6 +36,8 @@ public class CPU implements IClockTickable {
             this.PC = this.PCB.getProgramCounter();
             this.MAR = this.PCB.getMemoryAddressRegister();
             this.mode = this.PCB.getMode();
+        } else {
+            this.mode = ExecutionMode.KERNEL;
         }
     }
 
@@ -77,6 +79,9 @@ public class CPU implements IClockTickable {
 
     public void setPCB(ProcessControlBlock PCB) {
         this.PCB = PCB;
+        if (PCB == null) {
+            this.mode = ExecutionMode.KERNEL;
+        }
     }
 
     

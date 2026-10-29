@@ -33,7 +33,7 @@ public class MonitorSimulacionTest {
             var norte = controller.createComputer("Norte", 128, SchedulingPolicyType.FCFS);
             controller.createComputer("Sur", 256, SchedulingPolicyType.EDF);
             panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
-            if (pestanas.getTabCount() != 4 || !contiene(monitor, "CPU libre")) throw new AssertionError("Computadores");
+            if (pestanas.getTabCount() != 4 || !contiene(monitor, "CPU libre · KERNEL")) throw new AssertionError("Computadores");
             ((JButton) CreacionComputadoresGuiTest.buscar(monitor, JButton.class, "Ver detalle →")).doClick();
             if (pestanas.getSelectedIndex() != 1) throw new AssertionError("Abrir detalle");
             controller.createComputer("Este", 512, SchedulingPolicyType.ROUND_ROBIN); monitor.actualizarVista();

@@ -710,7 +710,7 @@ panel.add(btnGuardar);
             contenido.add(cpu);
             contenido.add(Box.createVerticalStrut(6)); 
             contenido.add(proceso);
-            if (detalle) { 
+            if (false && detalle) { 
                 contenido.add(Box.createVerticalStrut(6)); 
                 contenido.add(registros); 
             }
@@ -749,7 +749,7 @@ panel.add(btnGuardar);
             }
 
             var p = c.getCpu().getPCB();
-            cpu.setText(p == null ? "CPU libre" : "CPU ocupada · " + c.getCpu().getMode());
+            cpu.setText(p == null ? "CPU libre · KERNEL" : "CPU ocupada · " + c.getCpu().getMode());
             
             if (p == null) {
                 proceso.setText("Sin proceso");
@@ -762,12 +762,12 @@ panel.add(btnGuardar);
                     case CONSUMER -> "Consumidor";
                 };
                 proceso.setText("<html>" + nombreSeguro + " · ID " + p.id() + " · " + tipo
-                        + "<br>PC: " + c.getCpu().getPC() + " · Prioridad: " + p.getPriority()
+                        + "<br>PC: " + c.getCpu().getPC() + " · MAR: " + p.getMemoryAddressRegister() + " · Prioridad: " + p.getPriority()
                         + "<br>Tiempo restante: " + p.remainingTime() + " · Deadline restante: "
                         + p.getRemainingDeadline() + "</html>");
             }
             
-            if (detalle) registros.setText(p == null 
+            if (false && detalle) registros.setText(p == null 
                     ? "PC: —  ·  MAR: —  ·  Prioridad: —  ·  Deadline: —"
                     : "PC: " + c.getCpu().getPC() 
                     + "  ·  MAR: " + p.getMemoryAddressRegister() 

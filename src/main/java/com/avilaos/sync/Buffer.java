@@ -144,12 +144,17 @@ public class Buffer {
     MyQueue<Object> datos;
     private int produced;
     private int comsumed;
+    private int latency;
 
     private final MyQueue<ProcessControlBlock> waitingMutex = new MyQueue<>();
     private final MyQueue<ProcessControlBlock> waitingVacios = new MyQueue<>();
     private final MyQueue<ProcessControlBlock> waitingLlenos = new MyQueue<>();
 
-    public Buffer(Semaphore mutex, Semaphore vacios, Semaphore llenos, int idComp, int storage, int id, MyQueue<Object> datos,  int sizeInMemory) {
+    public Buffer(Semaphore mutex, Semaphore vacios, Semaphore llenos, int idComp, int storage, int id, MyQueue<Object> datos, int sizeInMemory) {
+        this(mutex, vacios, llenos, idComp, storage, id, datos, sizeInMemory, 0);
+    }
+
+    public Buffer(Semaphore mutex, Semaphore vacios, Semaphore llenos, int idComp, int storage, int id, MyQueue<Object> datos, int sizeInMemory, int latency) {
         this.mutex = new Semaphore(1, true);
         this.vacios = new Semaphore(storage, true);
         this.llenos = new Semaphore(0, true);
@@ -160,6 +165,7 @@ public class Buffer {
         this.datos = datos;
         this.produced = 0;
         this.comsumed = 0;
+        this.latency = Math.max(0, latency);
     }
 
     public synchronized Object consume() {
@@ -255,6 +261,14 @@ public class Buffer {
 
     public void setComsumed(int comsumed) {
         this.comsumed = comsumed;
+    }
+
+    public int getLatency() {
+        return latency;
+    }
+
+    public void setLatency(int latency) {
+        this.latency = Math.max(0, latency);
     }
 
     public synchronized void registerWaitingMutex(ProcessControlBlock pcb) {

@@ -38,7 +38,8 @@ public class NetworkSimulator {
     }
 
     public boolean handleDelay(ProcessControlBlock pcb, Buffer buffer) {
-        if (!isRemoteAccess(pcb, buffer) || latencyCycles <= 0) {
+        int delay = (buffer != null) ? buffer.getLatency() : this.latencyCycles;
+        if (!isRemoteAccess(pcb, buffer) || delay <= 0) {
             pcb.setNetworkDelayRemaining(0);
             pcb.setNetworkDelayDone(true);
             return true; // Acceso local o sin latencia
@@ -51,7 +52,7 @@ public class NetworkSimulator {
 
         // Si aún no ha iniciado la espera de latencia, se inicializa y bloquea
         if (pcb.getNetworkDelayRemaining() <= 0) {
-            pcb.setNetworkDelayRemaining(this.latencyCycles);
+            pcb.setNetworkDelayRemaining(delay);
         }
         pcb.setNetworkDelayDone(false);
         pcb.setState(ProcessState.BLOQUEADO);

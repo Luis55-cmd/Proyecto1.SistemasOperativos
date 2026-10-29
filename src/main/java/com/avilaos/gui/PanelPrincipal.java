@@ -47,10 +47,11 @@ public class PanelPrincipal extends JPanel {
     // NOTA: El campo ID numérico se deshabilita/elimina visualmente porque el Controller lo autogenera.
     private final JComboBox<OpcionComputador> comboComputadorBuffer = new JComboBox<>();
     private final JSpinner spinnerAlmacenamiento = new JSpinner(new SpinnerNumberModel(10, 1, 1000, 1));
+    private final JSpinner spinnerLatenciaBuffer = new JSpinner(new SpinnerNumberModel(2, 0, 1000, 1));
     private final JTextField memoriaBuffer = new JTextField("10");
     private final JLabel resultadoBuffer = texto("Ningún buffer creado en esta sesión.", 12, GRIS, false);
     private final DefaultTableModel buffersVisibles = new DefaultTableModel(
-            new String[]{"ID Buffer", "ID Comp", "Capacidad (Items)", "Tamaño en RAM"}, 0) {
+            new String[]{"ID Buffer", "ID Comp", "Capacidad (Items)", "Tamaño en RAM", "Latencia (ticks)"}, 0) {
         @Override public boolean isCellEditable(int fila, int columna) { return false; }
     };
 
@@ -258,6 +259,8 @@ public class PanelPrincipal extends JPanel {
         fila1.setMaximumSize(new Dimension(500, 62));
         // Se autogenera el ID en el controlador, por eso se oculta el ID visual
         fila1.add(campo("Computador Host", comboComputadorBuffer));
+        spinnerLatenciaBuffer.setName("latenciaBuffer");
+        fila1.add(campo("Latencia de Red (ticks)", spinnerLatenciaBuffer));
         tarjeta.add(fila1);
         tarjeta.add(Box.createVerticalStrut(16));
         
@@ -324,11 +327,13 @@ public class PanelPrincipal extends JPanel {
             }
             
             spinnerAlmacenamiento.commitEdit();
+            spinnerLatenciaBuffer.commitEdit();
             
             int capacidad = (Integer) spinnerAlmacenamiento.getValue();
+            int latencia = (Integer) spinnerLatenciaBuffer.getValue();
             resultadoBuffer.setText("Creando buffer…");
             GuiRequest.model(controller, () -> {
-                Buffer b=controller.createBuffer(compSeleccionado.id(), capacidad);
+                Buffer b=controller.createBuffer(compSeleccionado.id(), capacidad, latencia);
                 return b==null ? "Error: RAM insuficiente o anfitrión inválido" : "Buffer ID " + b.getId() + " creado en Host " + compSeleccionado.id();
             }, resultadoBuffer::setText, error -> resultadoBuffer.setText(error.getMessage()));
 
@@ -347,7 +352,8 @@ public class PanelPrincipal extends JPanel {
                 b.getId(), 
                 b.getIdComp(),       // Computador Host
                 b.getStorage(),      // Capacidad de ítems
-                b.getSizeInMemory()  // Tamaño en RAM
+                b.getSizeInMemory(), // TamaÃ±o en RAM
+                b.getLatency()       // Latencia de Red (ticks)
             });
         }
     }

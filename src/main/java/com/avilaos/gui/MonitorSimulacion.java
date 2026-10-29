@@ -78,12 +78,16 @@ public final class MonitorSimulacion extends JPanel {
     private final JPanel panelDetalleColas = new JPanel();
 
     // --- Componentes para visualizar los Buffers Globales ---
-    private final DefaultTableModel modeloBuffers = new DefaultTableModel(new Object[]{"Buffer", "Elementos", "Capacidad", "Semáforos (M, L, V)", "Procesos Bloqueados"}, 0) {
+    private final DefaultTableModel modeloBuffers = new DefaultTableModel(new Object[]{"Buffer", "Host", "Latencia (ticks)", "Elementos", "Capacidad", "Semáforos (M, L, V)", "Procesos Bloqueados"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
     private final JTable tablaBuffers = new JTable(modeloBuffers);
     private final JScrollPane scrollBuffers = new JScrollPane(tablaBuffers);
     private final JPanel panelDetalleBuffers = new JPanel(new BorderLayout(0, 8));
+    private final JComboBox<String> comboBuffersLatencia = new JComboBox<>();
+    private final JSpinner spinnerNuevaLatencia = new JSpinner(new SpinnerNumberModel(2, 0, 1000, 1));
+    private final JButton btnActualizarLatencia = accion("Actualizar Latencia", false);
+    private boolean actualizandoComboBuffers = false;
 
     private final JTextArea areaLog = new JTextArea();
     private final JScrollPane scrollLog = new JScrollPane(areaLog);
@@ -147,6 +151,72 @@ public final class MonitorSimulacion extends JPanel {
         JLabel tituloBuffers = texto("ESTADO DE LOS BUFFERS GLOBALES", 12, TINTA, true);
         panelDetalleBuffers.add(tituloBuffers, BorderLayout.NORTH);
         panelDetalleBuffers.add(scrollBuffers, BorderLayout.CENTER);
+        JPanel panelModificarLatencia = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
+        panelModificarLatencia.setOpaque(false);
+        panelModificarLatencia.setAlignmentX(LEFT_ALIGNMENT);
+        panelModificarLatencia.add(texto("Modificar latencia en simulación:", 12, TINTA, true));
+        comboBuffersLatencia.setPreferredSize(new Dimension(190, 28));
+        panelModificarLatencia.add(comboBuffersLatencia);
+        panelModificarLatencia.add(texto("Latencia (ticks):", 12, GRIS, false));
+        spinnerNuevaLatencia.setPreferredSize(new Dimension(75, 28));
+        ((javax.swing.text.DefaultFormatter) ((JSpinner.DefaultEditor) spinnerNuevaLatencia.getEditor())
+                .getTextField().getFormatter()).setCommitsOnValidEdit(true);
+        panelModificarLatencia.add(spinnerNuevaLatencia);
+        btnActualizarLatencia.setPreferredSize(new Dimension(150, 28));
+        btnActualizarLatencia.setEnabled(false);
+        panelModificarLatencia.add(btnActualizarLatencia);
+
+        comboBuffersLatencia.addActionListener(e -> {
+            if (!actualizandoComboBuffers) {
+                String sel = (String) comboBuffersLatencia.getSelectedItem();
+                if (sel != null && view != null) {
+                    for (int i = 0; i < view.buffers.size(); i++) {
+                        var b = view.buffers.get(i);
+                        if (sel.startsWith("Buffer " + b.getId() + " ")) {
+                            spinnerNuevaLatencia.setValue(b.getLatency());
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        tablaBuffers.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && view != null) {
+                int row = tablaBuffers.getSelectedRow();
+                if (row >= 0 && row < view.buffers.size()) {
+                    var b = view.buffers.get(row);
+                    for (int i = 0; i < comboBuffersLatencia.getItemCount(); i++) {
+                        String item = comboBuffersLatencia.getItemAt(i);
+                        if (item.startsWith("Buffer " + b.getId() + " ")) {
+                            comboBuffersLatencia.setSelectedIndex(i);
+                            spinnerNuevaLatencia.setValue(b.getLatency());
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        btnActualizarLatencia.addActionListener(e -> {
+            String sel = (String) comboBuffersLatencia.getSelectedItem();
+            if (sel != null && sel.startsWith("Buffer ")) {
+                try {
+                    spinnerNuevaLatencia.commitEdit();
+                    int endIdx = sel.indexOf(" (Host");
+                    if (endIdx == -1) endIdx = sel.length();
+                    int bufId = Integer.parseInt(sel.substring("Buffer ".length(), endIdx).trim());
+                    int nuevaLat = (Integer) spinnerNuevaLatencia.getValue();
+                    GuiRequest.control(controller, () -> {
+                        controller.setBufferLatency(bufId, nuevaLat);
+                    });
+                } catch (Exception ex) {
+                    // ignore
+                }
+            }
+        });
+
+        panelDetalleBuffers.add(panelModificarLatencia, BorderLayout.SOUTH);
 
         cabecera.add(panelDetalleColas);
         cabecera.add(Box.createVerticalStrut(16));
@@ -373,6 +443,7 @@ public final class MonitorSimulacion extends JPanel {
                     o.addProperty("hostComputerId", b.getIdComp());
                     o.addProperty("storage", b.getStorage());
                     o.addProperty("sizeInMemory", b.getSizeInMemory());
+                    o.addProperty("latency", b.getLatency());
                     libre[b.getIdComp() - 1] -= b.getStorage();
                     buffers.add(o);
                 }
@@ -449,7 +520,8 @@ public final class MonitorSimulacion extends JPanel {
             }
             for (com.google.gson.JsonElement e : root.getAsJsonArray("buffers")) {
                 com.google.gson.JsonObject b = e.getAsJsonObject();
-                if (controller.createBuffer(b.get("hostComputerId").getAsInt(), b.get("storage").getAsInt()) == null)
+                int lat = b.has("latency") ? b.get("latency").getAsInt() : controller.getNetworkLatency();
+                if (controller.createBuffer(b.get("hostComputerId").getAsInt(), b.get("storage").getAsInt(), lat) == null)
                     throw new IllegalStateException("No se pudo crear el buffer");
             }
             int maxId = 0;
@@ -591,7 +663,43 @@ public final class MonitorSimulacion extends JPanel {
                 
             String bloqueados = b.getBlockedProcessesAsString();
             
-            modeloBuffers.addRow(new Object[]{nombre, elementos, capacidad, semaforos, bloqueados});
+            int hostId = b.getIdComp();
+            int latencia = b.getLatency();
+            modeloBuffers.addRow(new Object[]{nombre, "Host " + hostId, latencia + " ticks", elementos, capacidad, semaforos, bloqueados});
+        }
+
+        // Actualizar combo de buffers para modificar latencia en simulaciÃ³n
+        actualizandoComboBuffers = true;
+        String seleccionPrevia = (String) comboBuffersLatencia.getSelectedItem();
+        comboBuffersLatencia.removeAllItems();
+        int indiceSeleccion = -1;
+        for (int i = 0; i < buffers.size(); i++) {
+            var b = buffers.get(i);
+            String item = "Buffer " + b.getId() + " (Host " + b.getIdComp() + ")";
+            comboBuffersLatencia.addItem(item);
+            if (seleccionPrevia != null && seleccionPrevia.startsWith("Buffer " + b.getId() + " ")) {
+                indiceSeleccion = i;
+            }
+        }
+        if (indiceSeleccion >= 0) {
+            comboBuffersLatencia.setSelectedIndex(indiceSeleccion);
+        } else if (buffers.size() > 0) {
+            comboBuffersLatencia.setSelectedIndex(0);
+        }
+        btnActualizarLatencia.setEnabled(buffers.size() > 0);
+        actualizandoComboBuffers = false;
+
+        String actual = (String) comboBuffersLatencia.getSelectedItem();
+        if (actual != null) {
+            for (int i = 0; i < buffers.size(); i++) {
+                var b = buffers.get(i);
+                if (actual.startsWith("Buffer " + b.getId() + " ")) {
+                    if (!spinnerNuevaLatencia.hasFocus()) {
+                        spinnerNuevaLatencia.setValue(b.getLatency());
+                    }
+                    break;
+                }
+            }
         }
     }
     

@@ -112,7 +112,10 @@ public final class SimulationSnapshot {
         public int getCount() { return count; }
         public int availablePermits() { return count; }
     }
-    public record BufferView(int id, int idComp, int storage, int sizeInMemory, int produced, int comsumed, QueueView datos, PermitView mutex, PermitView llenos, PermitView vacios, String blockedProcessesAsString) {
+    public record BufferView(int id, int idComp, int storage, int sizeInMemory, int produced, int comsumed, QueueView datos, PermitView mutex, PermitView llenos, PermitView vacios, String blockedProcessesAsString, int latency) {
+        public BufferView(int id, int idComp, int storage, int sizeInMemory, int produced, int comsumed, QueueView datos, PermitView mutex, PermitView llenos, PermitView vacios, String blockedProcessesAsString) {
+            this(id, idComp, storage, sizeInMemory, produced, comsumed, datos, mutex, llenos, vacios, blockedProcessesAsString, 0);
+        }
         public int getId() { return id; }
         public int getIdComp() { return idComp; }
         public int getStorage() { return storage; }
@@ -124,6 +127,7 @@ public final class SimulationSnapshot {
         public PermitView getLlenos() { return llenos; }
         public PermitView getVacios() { return vacios; }
         public String getBlockedProcessesAsString() { return blockedProcessesAsString; }
+        public int getLatency() { return latency; }
     }
 
     private static ProcessView toProcessView(ProcessControlBlock p) {
@@ -182,7 +186,7 @@ public final class SimulationSnapshot {
             int v = b.getTheoreticalValue(Buffer.SemaphoreKind.VACIOS);
             copiedBuffers[i]=new BufferView(b.getId(),b.getIdComp(),b.getStorage(),b.getSizeInMemory(),b.getProduced(),b.getComsumed(),
                     new QueueView(b.getDatos().size(),""),new PermitView(m),
-                    new PermitView(l),new PermitView(v),b.getBlockedProcessesAsString());
+                    new PermitView(l),new PermitView(v),b.getBlockedProcessesAsString(), b.getLatency());
         }
         computers=new Values<>(copiedNodes); buffers=new Values<>(copiedBuffers);
         // Mantener muestras aunque el EDT omita refrescos. Ventana acotada a 2000 ciclos.

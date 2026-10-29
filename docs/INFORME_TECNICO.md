@@ -21,6 +21,7 @@
    - [5.6 Hardware, Reloj Global y Kernel del Nodo (`com.avilaos.hardware` y `com.avilaos.core.kernel`)](#56-hardware-reloj-global-y-kernel-del-nodo-comavilaoshardware-y-comavilaoscorekernel)
    - [5.7 Concurrencia, Controlador y Snapshots (`com.avilaos.concurrency` y `com.avilaos.simulation`)](#57-concurrencia-controlador-y-snapshots-comavilaosconcurrency-y-comavilaossimulation)
    - [5.8 Interfaz Gráfica, Persistencia JSON y Métricas (`com.avilaos.gui`)](#58-interfaz-gráfica-persistencia-json-y-métricas-comavilaosgui)
+   - [5.9 Manejo de Hilos de Java y Sincronización](#59-manejo-de-hilos-de-java-y-sincronización)
 6. [Diagramas UML (compatibles con GitHub / Mermaid)](#6-diagramas-uml-compatibles-con-github--mermaid)
    - [6.1 Diagrama UML de Clases](#61-diagrama-uml-de-clases)
    - [6.2 Diagrama UML de Secuencia](#62-diagrama-uml-de-secuencia)
@@ -240,6 +241,24 @@ Todas las políticas implementan `IScheduler`:
   2. **Throughput (procesos/ciclo)**
   3. **Tasa de éxito (deadlines) (%)**
   4. **Tiempo de espera (ticks)**
+
+---
+
+### 5.9 Manejo de Hilos de Java y Sincronización
+
+La aplicación coordina **tres hilos principales de ejecución**: el hilo de eventos de Swing, el hilo del reloj global y un hilo trabajador para las solicitudes de la interfaz. Son hilos reales de Java con responsabilidades diferentes; los procesos de ÁvilaOS, en cambio, son entidades **simuladas** representadas por sus PCB y no crean un hilo Java por cada proceso. La JVM también puede mantener otros hilos internos.
+
+- **Hilo de eventos de Swing (EDT)**:
+  - **Clases y métodos principales:** `Main.main(String[])` programa la creación de la ventana mediante `SwingUtilities.invokeLater(...)`. Los componentes de `PanelPrincipal`, `EditorProceso` y `MonitorSimulacion` atienden en el EDT las acciones del usuario y actualizan la interfaz.
+  - Los manejadores capturan los datos de los controles y envían las operaciones al trabajador mediante `GuiRequest.model(...)`, `GuiRequest.control(...)` o `GuiCommands.submit(...)`. El EDT recibe posteriormente los resultados o errores con `SwingUtilities.invokeLater(...)` y consulta el `SimulationSnapshot` publicado para refrescar las vistas.
+- **Hilo del reloj global (`AvilaOS-GlobalClock`)**:
+  - **Clase y métodos principales:** `GlobalClock` implementa `Runnable`. `start()` crea el hilo demonio una sola vez y lo reutiliza al reanudar; `run()` mantiene el ciclo de ejecución, y `pause()`, `resume()` y `stop()` controlan su estado. El semáforo `wake` permite despertar el hilo ante cambios de estado o esperar el intervalo configurado sin retener el permiso del modelo.
+  - En cada pulso automático, `tickLocked()` incrementa el ciclo global y notifica a los componentes suscritos mediante `IClockTickable.tick(int)`. `SimulationController.tick(int)` coordina entonces un ciclo para cada computador y `ComputerKernel.executeCycle(...)` realiza despacho, ejecución y gestión de estados. El paso manual `GlobalClock.step()` ejecuta el pulso en el hilo que lo invoca, bajo la misma protección; no crea otro hilo de reloj.
+- **Hilo trabajador de solicitudes (`AvilaOS-Commands`)**:
+  - **Clase y métodos principales:** `GuiCommands` crea un único hilo demonio en su constructor. `submit(...)` encapsula el trabajo y sus respuestas; `enqueue(...)` intenta incorporar la solicitud a una cola propia `MyQueue<Runnable>` de hasta 128 tareas. Si la cola está ocupada o llena, informa el rechazo al EDT en lugar de hacer que la interfaz espere.
+  - `run()` espera en el semáforo `available`, retira las tareas en orden y las ejecuta fuera del EDT. Las solicitudes de `GuiRequest.model(...)` comprueban la sesión y protegen el acceso al modelo; otras tareas, como guardar o cargar configuración desde `MonitorSimulacion`, también se envían al trabajador. Al finalizar, `submit(...)` programa el resultado o la excepción en el EDT.
+
+**Protección del estado compartido:** `StateAccess.enter()` y `exit()` utilizan un `Semaphore(1, true)` para serializar los ticks y las operaciones protegidas del modelo. La reentrada mediante `owner` y `depth` permite que un mismo hilo invoque métodos protegidos anidados sin esperar su propio permiso. Al salir del nivel externo, se publica un `SimulationSnapshot` con copias de los datos antes de liberar el semáforo; `SimulationController.snapshot()` permite a la interfaz leer la referencia publicada. El trabajador protege además su cola mediante `queueMutex` y usa `available` para señalar tareas pendientes. Estos mecanismos de sincronización entre hilos Java son distintos del protocolo de semáforos que el simulador aplica a los productores y consumidores.
 
 ---
 

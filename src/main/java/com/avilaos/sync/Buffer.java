@@ -318,6 +318,20 @@ public class Buffer {
         this.waitingLlenos.removeElement(pcb);
     }
 
+    /**
+     * Retorna el valor del semáforo según la convención clásica de Stallings/Dijkstra:
+     * - Si es positivo (> 0): permisos disponibles.
+     * - Si es cero (== 0): ocupado sin procesos en espera.
+     * - Si es negativo (< 0): su valor absoluto indica la cantidad de procesos bloqueados en la cola de espera.
+     */
+    public synchronized int getTheoreticalValue(SemaphoreKind kind) {
+        return switch (kind) {
+            case MUTEX -> mutex.availablePermits() - waitingMutex.size();
+            case VACIOS -> vacios.availablePermits() - waitingVacios.size();
+            case LLENOS -> llenos.availablePermits() - waitingLlenos.size();
+        };
+    }
+
     public MyQueue<ProcessControlBlock> getWaitingMutex() {
         return waitingMutex;
     }

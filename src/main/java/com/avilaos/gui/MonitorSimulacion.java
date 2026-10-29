@@ -40,12 +40,42 @@ public final class MonitorSimulacion extends JPanel {
     private final JComboBox<Integer> intervalo = new JComboBox<>(new Integer[]{100, 250, 500, 1000});
     private final JLabel intervaloAplicado = texto("", 12, GRIS, false);
     
-    private final DefaultTableModel modeloColas = new DefaultTableModel(new Object[]{"Nuevos", "Listos", "Bloqueados", "Terminados"}, 0) {
+    // --- Tablas independientes para cada cola del Kernel ---
+    private final JLabel tituloColas = texto("DETALLE DE COLAS DEL KERNEL (Comp. seleccionado)", 12, TINTA, true);
+
+    private final DefaultTableModel modeloNuevos = new DefaultTableModel(
+            new Object[]{"ID", "Nombre", "Tipo", "Prioridad", "Memoria (RAM)", "Instrucciones", "Deadline"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
-    private final JTable tablaColas = new JTable(modeloColas);
-    private final JScrollPane scrollColas = new JScrollPane(tablaColas);
-    private final JPanel panelDetalleColas = new JPanel(new BorderLayout(0, 8));
+    private final JTable tablaNuevos = new JTable(modeloNuevos);
+    private final JScrollPane scrollNuevos = new JScrollPane(tablaNuevos);
+    private final JLabel tituloNuevos = texto("COLA DE NUEVOS (NEW) · 0 procesos", 12, TINTA, true);
+
+    private final DefaultTableModel modeloListos = new DefaultTableModel(
+            new Object[]{"ID", "Nombre", "Tipo", "Prioridad", "T. Restante", "Deadline Rest.", "PC", "MAR", "Memoria (RAM)"}, 0) {
+        @Override public boolean isCellEditable(int row, int column) { return false; }
+    };
+    private final JTable tablaListos = new JTable(modeloListos);
+    private final JScrollPane scrollListos = new JScrollPane(tablaListos);
+    private final JLabel tituloListos = texto("COLA DE LISTOS (READY) · 0 procesos", 12, TINTA, true);
+
+    private final DefaultTableModel modeloBloqueados = new DefaultTableModel(
+            new Object[]{"ID", "Nombre", "Tipo", "Motivo de Bloqueo", "Buffer", "Prioridad", "T. Restante", "Deadline Rest.", "Memoria (RAM)"}, 0) {
+        @Override public boolean isCellEditable(int row, int column) { return false; }
+    };
+    private final JTable tablaBloqueados = new JTable(modeloBloqueados);
+    private final JScrollPane scrollBloqueados = new JScrollPane(tablaBloqueados);
+    private final JLabel tituloBloqueados = texto("COLA DE BLOQUEADOS (BLOCKED) · 0 procesos", 12, TINTA, true);
+
+    private final DefaultTableModel modeloTerminados = new DefaultTableModel(
+            new Object[]{"ID", "Nombre", "Tipo", "Prioridad", "Instrucciones Totales", "Memoria Liberada"}, 0) {
+        @Override public boolean isCellEditable(int row, int column) { return false; }
+    };
+    private final JTable tablaTerminados = new JTable(modeloTerminados);
+    private final JScrollPane scrollTerminados = new JScrollPane(tablaTerminados);
+    private final JLabel tituloTerminados = texto("COLA DE TERMINADOS (TERMINATED) · 0 procesos", 12, TINTA, true);
+
+    private final JPanel panelDetalleColas = new JPanel();
 
     // --- Componentes para visualizar los Buffers Globales ---
     private final DefaultTableModel modeloBuffers = new DefaultTableModel(new Object[]{"Buffer", "Elementos", "Capacidad", "Semáforos (M, L, V)", "Procesos Bloqueados"}, 0) {
@@ -87,17 +117,22 @@ public final class MonitorSimulacion extends JPanel {
         cabecera.add(intervaloAplicado);
         cabecera.add(Box.createVerticalStrut(16));
         
-        tablaColas.setFillsViewportHeight(true);
-        tablaColas.getTableHeader().setReorderingAllowed(false);
-        tablaColas.setRowHeight(24);
-        scrollColas.setPreferredSize(new Dimension(Integer.MAX_VALUE, 120));
-        scrollColas.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
-        
+        // --- Configuración gráfica de las tablas de Colas ---
+        panelDetalleColas.setLayout(new BoxLayout(panelDetalleColas, BoxLayout.Y_AXIS));
         panelDetalleColas.setOpaque(false);
         panelDetalleColas.setAlignmentX(LEFT_ALIGNMENT);
-        JLabel tituloColas = texto("DETALLE DE COLAS DEL KERNEL (Comp. seleccionado)", 12, TINTA, true);
-        panelDetalleColas.add(tituloColas, BorderLayout.NORTH);
-        panelDetalleColas.add(scrollColas, BorderLayout.CENTER);
+        
+        tituloColas.setAlignmentX(LEFT_ALIGNMENT);
+        panelDetalleColas.add(tituloColas);
+        panelDetalleColas.add(Box.createVerticalStrut(10));
+        
+        panelDetalleColas.add(crearSeccionCola(tituloNuevos, scrollNuevos, tablaNuevos));
+        panelDetalleColas.add(Box.createVerticalStrut(12));
+        panelDetalleColas.add(crearSeccionCola(tituloListos, scrollListos, tablaListos));
+        panelDetalleColas.add(Box.createVerticalStrut(12));
+        panelDetalleColas.add(crearSeccionCola(tituloBloqueados, scrollBloqueados, tablaBloqueados));
+        panelDetalleColas.add(Box.createVerticalStrut(12));
+        panelDetalleColas.add(crearSeccionCola(tituloTerminados, scrollTerminados, tablaTerminados));
         panelDetalleColas.setVisible(false);
         
         // --- Configuración gráfica de la tabla de Buffers ---
@@ -185,6 +220,43 @@ public final class MonitorSimulacion extends JPanel {
         this.panelMetricas = new PanelMetricas(controller);
         pestanas.addTab("Métricas", panelMetricas);
     }
+
+    private JPanel crearSeccionCola(JLabel titulo, JScrollPane scroll, JTable tabla) {
+        tabla.setFillsViewportHeight(true);
+        tabla.getTableHeader().setReorderingAllowed(false);
+        tabla.setRowHeight(24);
+        scroll.setPreferredSize(new Dimension(Integer.MAX_VALUE, 110));
+        scroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 130));
+        
+        JPanel p = new JPanel(new BorderLayout(0, 6));
+        p.setOpaque(false);
+        p.setAlignmentX(LEFT_ALIGNMENT);
+        p.add(titulo, BorderLayout.NORTH);
+        p.add(scroll, BorderLayout.CENTER);
+        return p;
+    }
+
+    private static String formatoTipo(ProcessType type) {
+        if (type == null) return "-";
+        return switch (type) {
+            case CPU_BOUND -> "CPU";
+            case IO_BOUND -> "E/S";
+            case PRODUCER -> "Productor";
+            case CONSUMER -> "Consumidor";
+        };
+    }
+
+    private static String formatoMotivoBloqueo(BlockReason reason) {
+        if (reason == null) return "-";
+        return switch (reason) {
+            case WAITING_MUTEX -> "Esperando Mutex";
+            case WAITING_EMPTY_BUFFER -> "Buffer Vacío";
+            case WAITING_FULL_BUFFER -> "Buffer Lleno";
+            case NETWORK_LATENCY -> "Latencia Red";
+            case WAITING_IO -> "Espera E/S";
+            case NONE -> "Ninguno";
+        };
+    }
     
     private JPanel crearPanelPersistencia() {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
@@ -195,45 +267,45 @@ public final class MonitorSimulacion extends JPanel {
         JButton btnCargar = accion("Cargar configuración", false);
 
         btnGuardar.addActionListener(e -> {
-    JFileChooser chooser = new JFileChooser();
-    chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos JSON (*.json)", "json"));
-    
-    if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-        File archivo = chooser.getSelectedFile();
-        if (!archivo.getName().toLowerCase().endsWith(".json")) {
-            archivo = new File(archivo.getAbsolutePath() + ".json");
-        }
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos JSON (*.json)", "json"));
+            
+            if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File archivo = chooser.getSelectedFile();
+                if (!archivo.getName().toLowerCase().endsWith(".json")) {
+                    archivo = new File(archivo.getAbsolutePath() + ".json");
+                }
 
-        File destino = archivo;
-        btnGuardar.setEnabled(false);
-        GuiCommands.submit(() -> guardarEstado(destino), ok -> { btnGuardar.setEnabled(true); if (!ok) JOptionPane.showMessageDialog(this, "No se pudo guardar la configuración. Consulta el log.", "Error al guardar", JOptionPane.ERROR_MESSAGE); },
-                error -> { btnGuardar.setEnabled(true); controller.logEvent(error.getMessage()); });
-    }
-});
-          btnCargar.addActionListener(e -> {
-    JFileChooser chooser = new JFileChooser();
-    chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos JSON (*.json)", "json"));
-
-    if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-        File archivo = chooser.getSelectedFile();
-
-        btnCargar.setEnabled(false);
-        GuiCommands.submit(() -> cargarEstado(archivo), ok -> {
-            btnCargar.setEnabled(true);
-            if (!ok) {
-                JOptionPane.showMessageDialog(this,
-                        "No se pudo cargar el archivo. Consulta el log para conocer el error.",
-                        "Error de carga", JOptionPane.ERROR_MESSAGE);
+                File destino = archivo;
+                btnGuardar.setEnabled(false);
+                GuiCommands.submit(() -> guardarEstado(destino), ok -> { btnGuardar.setEnabled(true); if (!ok) JOptionPane.showMessageDialog(this, "No se pudo guardar la configuración. Consulta el log.", "Error al guardar", JOptionPane.ERROR_MESSAGE); },
+                        error -> { btnGuardar.setEnabled(true); controller.logEvent(error.getMessage()); });
             }
-        }, error -> {
-            btnCargar.setEnabled(true);
-            controller.logEvent(error.getMessage());
-            JOptionPane.showMessageDialog(this, "No se pudo cargar el archivo: " + error.getMessage(),
-                    "Error de carga", JOptionPane.ERROR_MESSAGE);
         });
-    }
-});
-panel.add(btnGuardar);
+        btnCargar.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos JSON (*.json)", "json"));
+
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File archivo = chooser.getSelectedFile();
+
+                btnCargar.setEnabled(false);
+                GuiCommands.submit(() -> cargarEstado(archivo), ok -> {
+                    btnCargar.setEnabled(true);
+                    if (!ok) {
+                        JOptionPane.showMessageDialog(this,
+                                "No se pudo cargar el archivo. Consulta el log para conocer el error.",
+                                "Error de carga", JOptionPane.ERROR_MESSAGE);
+                    }
+                }, error -> {
+                    btnCargar.setEnabled(true);
+                    controller.logEvent(error.getMessage());
+                    JOptionPane.showMessageDialog(this, "No se pudo cargar el archivo: " + error.getMessage(),
+                            "Error de carga", JOptionPane.ERROR_MESSAGE);
+                });
+            }
+        });
+        panel.add(btnGuardar);
         panel.add(btnCargar);
         JButton btnLog = accion("Exportar log", false);
         btnLog.addActionListener(e -> {
@@ -524,64 +596,101 @@ panel.add(btnGuardar);
     }
     
     private void actualizarDetalleColasGlobal() {
-    int seleccion = pestanas.getSelectedIndex();
-    var computadores = view.computers;
-    int cantidad = computadores.size();
-    
-    if (cantidad == 0 || pestanas.getSelectedComponent() == panelMetricas) {
-        panelDetalleColas.setVisible(false);
-        return;
-    }
-    
-    panelDetalleColas.setVisible(true);
-    int compIndex = seleccion > 0 ? seleccion - 1 : 0;
-    
-    if (compIndex < cantidad) {
-        Node c = computadores.get(compIndex);
-        var kernel = c.getKernel();
+        int seleccion = pestanas.getSelectedIndex();
+        var computadores = view.computers;
+        int cantidad = computadores.size();
         
-        String[] nuevos = extraerElementos(kernel.getNewQueue().toString());
-        String[] listos = extraerElementos(kernel.getReadyQueue().toString());
-        String[] bloqueados = extraerElementos(kernel.getBlockedQueue().toString());
-        String[] terminados = extraerElementos(kernel.getEndedQueue().toString());
+        if (cantidad == 0 || pestanas.getSelectedComponent() == panelMetricas) {
+            panelDetalleColas.setVisible(false);
+            return;
+        }
         
-        int maxFilas = Math.max(Math.max(nuevos.length, listos.length), Math.max(bloqueados.length, terminados.length));
+        panelDetalleColas.setVisible(true);
+        int compIndex = seleccion > 0 ? seleccion - 1 : 0;
         
-        modeloColas.setRowCount(0);
-        
-        // Agrega una fila por cada proceso para que queden verticualizados
-        for (int i = 0; i < maxFilas; i++) {
-            String n = (i < nuevos.length) ? nuevos[i] : "";
-            String l = (i < listos.length) ? listos[i] : "";
-            String b = (i < bloqueados.length) ? bloqueados[i] : "";
-            String t = (i < terminados.length) ? terminados[i] : "";
+        if (compIndex < cantidad) {
+            Node c = computadores.get(compIndex);
+            var kernel = c.getKernel();
             
-            modeloColas.addRow(new Object[]{n, l, b, t});
+            tituloColas.setText("DETALLE DE COLAS DEL KERNEL — " + c.getName() + " (ID " + c.getId() + ")");
+            
+            // 1. Nuevos
+            modeloNuevos.setRowCount(0);
+            var nuevos = kernel.getNewQueue().getProcesses();
+            for (int i = 0; i < nuevos.size(); i++) {
+                var p = nuevos.get(i);
+                modeloNuevos.addRow(new Object[]{
+                    p.getId(),
+                    p.getName() != null ? p.getName() : "P" + p.getId(),
+                    formatoTipo(p.getType()),
+                    p.getPriority(),
+                    p.getAssignedMemory(),
+                    p.getTotalInstructions(),
+                    p.getDeadline()
+                });
+            }
+            tituloNuevos.setText("COLA DE NUEVOS (NEW) · " + nuevos.size() + " procesos");
+            
+            // 2. Listos
+            modeloListos.setRowCount(0);
+            var listos = kernel.getReadyQueue().getProcesses();
+            for (int i = 0; i < listos.size(); i++) {
+                var p = listos.get(i);
+                modeloListos.addRow(new Object[]{
+                    p.getId(),
+                    p.getName() != null ? p.getName() : "P" + p.getId(),
+                    formatoTipo(p.getType()),
+                    p.getPriority(),
+                    p.getRemainingTime(),
+                    p.getRemainingDeadline(),
+                    p.getProgramCounter(),
+                    p.getMemoryAddressRegister(),
+                    p.getAssignedMemory()
+                });
+            }
+            tituloListos.setText("COLA DE LISTOS (READY) · " + listos.size() + " procesos");
+
+            // 3. Bloqueados
+            modeloBloqueados.setRowCount(0);
+            var bloqueados = kernel.getBlockedQueue().getProcesses();
+            for (int i = 0; i < bloqueados.size(); i++) {
+                var p = bloqueados.get(i);
+                String buf = p.getTargetBufferId() != null 
+                    ? (p.getTargetBufferId().startsWith("Buffer") ? p.getTargetBufferId() : "Buffer " + p.getTargetBufferId()) 
+                    : "-";
+                modeloBloqueados.addRow(new Object[]{
+                    p.getId(),
+                    p.getName() != null ? p.getName() : "P" + p.getId(),
+                    formatoTipo(p.getType()),
+                    formatoMotivoBloqueo(p.getBlockReason()),
+                    buf,
+                    p.getPriority(),
+                    p.getRemainingTime(),
+                    p.getRemainingDeadline(),
+                    p.getAssignedMemory()
+                });
+            }
+            tituloBloqueados.setText("COLA DE BLOQUEADOS (BLOCKED) · " + bloqueados.size() + " procesos");
+
+            // 4. Terminados
+            modeloTerminados.setRowCount(0);
+            var terminados = kernel.getEndedQueue().getProcesses();
+            for (int i = 0; i < terminados.size(); i++) {
+                var p = terminados.get(i);
+                modeloTerminados.addRow(new Object[]{
+                    p.getId(),
+                    p.getName() != null ? p.getName() : "P" + p.getId(),
+                    formatoTipo(p.getType()),
+                    p.getPriority(),
+                    p.getTotalInstructions(),
+                    p.getAssignedMemory()
+                });
+            }
+            tituloTerminados.setText("COLA DE TERMINADOS (TERMINATED) · " + terminados.size() + " procesos");
         }
     }
-}
-    
-    private String[] extraerElementos(String textoCola) {
-    if (textoCola == null) return new String[0];
-    String limpio = textoCola.trim();
-    
-    // Remueve corchetes si existen al inicio y final
-    if (limpio.startsWith("[")) limpio = limpio.substring(1);
-    if (limpio.endsWith("]")) limpio = limpio.substring(0, limpio.length() - 1);
-    limpio = limpio.trim();
-    
-    if (limpio.isEmpty()) return new String[0];
-    
-    // 1. Si contiene el formato detallado completo PCB{...}
-    if (limpio.contains("PCB{")) {
-        return limpio.split(",\\s*(?=PCB\\{)");
-    }
-    
-    // 2. Si son nombres formateados tipo 'rew(1), rew(2)' o simplemente separados por comas
-    return limpio.split(",\\s*");
-}
 
-   private void reconstruirPestanas() {
+    private void reconstruirPestanas() {
         int seleccion = pestanas.getSelectedIndex();
         boolean viendoMetricas = pestanas.getSelectedComponent() == panelMetricas;
         int seleccionado = seleccion > 0 && seleccion <= ids.length ? ids[seleccion - 1] : -1;

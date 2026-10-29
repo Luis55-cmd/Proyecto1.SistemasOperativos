@@ -14,6 +14,8 @@ public final class SimulationSnapshot {
     public final int interval;
     public final Values<Node> computers;
     public final Values<BufferView> buffers;
+    public final Values<ProcessRow> processes;
+    public record ProcessRow(int computerId, String computerName, ProcessState state, ProcessView process) { }
     public record Usage(int computerId, double percent, double throughput, double successRate, double waitTime) {
         public Usage(int computerId, double percent) { this(computerId, percent, 0.0, 0.0, 0.0); }
     }
@@ -39,10 +41,11 @@ public final class SimulationSnapshot {
             int remainingDeadline,
             int assignedMemory,
             com.avilaos.core.model.BlockReason blockReason,
-            String targetBufferId
+            String targetBufferId,
+            int ioInterval, int ioDuration, int cyclesPerOperation, int requiredElements
     ) {
         public ProcessView(String description, int id, String name, com.avilaos.core.model.ProcessType type, int remainingTime, int memoryAddressRegister, int priority, int remainingDeadline) {
-            this(description, id, name, type, remainingTime, remainingTime, memoryAddressRegister, 0, priority, remainingDeadline, remainingDeadline, 0, com.avilaos.core.model.BlockReason.NONE, null);
+            this(description, id, name, type, remainingTime, remainingTime, memoryAddressRegister, 0, priority, remainingDeadline, remainingDeadline, 0, com.avilaos.core.model.BlockReason.NONE, null, 0, 0, 0, 0);
         }
         public String getDescription() { return description; }
         public int getId() { return id; }
@@ -147,7 +150,8 @@ public final class SimulationSnapshot {
                 p.getRemainingDeadline(),
                 mem,
                 p.getBlockReason() != null ? p.getBlockReason() : BlockReason.NONE,
-                p.getTargetBufferId()
+                p.getTargetBufferId(),
+                p.getIoInterval(), p.getIoDuration(), p.getCyclesPerOperation(), p.getRequiredElements()
         );
     }
 
@@ -185,10 +189,22 @@ public final class SimulationSnapshot {
             int l = b.getTheoreticalValue(Buffer.SemaphoreKind.LLENOS);
             int v = b.getTheoreticalValue(Buffer.SemaphoreKind.VACIOS);
             copiedBuffers[i]=new BufferView(b.getId(),b.getIdComp(),b.getStorage(),b.getSizeInMemory(),b.getProduced(),b.getComsumed(),
-                    new QueueView(b.getDatos().size(),""),new PermitView(m),
+                    new QueueView(b.getDatos().size(),b.getDatos().toString()),new PermitView(m),
                     new PermitView(l),new PermitView(v),b.getBlockedProcessesAsString(), b.getLatency());
         }
-        computers=new Values<>(copiedNodes); buffers=new Values<>(copiedBuffers);
+        int processCount = 0;
+        for (int i=0; i<nodes.size(); i++) processCount += nodes.get(i).getKernel().getProcessList().size();
+        Object[] copiedProcesses = new Object[processCount];
+        int processIndex = 0;
+        for (int i=0; i<nodes.size(); i++) {
+            var computer = nodes.get(i);
+            var list = computer.getKernel().getProcessList();
+            for (int j=0; j<list.size(); j++) {
+                var process = list.get(j);
+                copiedProcesses[processIndex++] = new ProcessRow(computer.getId(), computer.getName(), process.getState(), toProcessView(process));
+            }
+        }
+        computers=new Values<>(copiedNodes); buffers=new Values<>(copiedBuffers); processes=new Values<>(copiedProcesses);
         // Mantener muestras aunque el EDT omita refrescos. Ventana acotada a 2000 ciclos.
         Object[] usages=new Object[computers.size()];
         for(int i=0;i<usages.length;i++) {

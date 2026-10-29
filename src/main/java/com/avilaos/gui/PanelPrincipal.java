@@ -12,7 +12,7 @@ import javax.swing.border.EmptyBorder;
 
 /** Vista Swing: conserva formularios; no modifica el kernel ni ejecuta procesos. */
 public class PanelPrincipal extends JPanel {
-    public enum Destino { MENU, COMPUTADOR, BUFFER, PROCESO, SIMULACION, METRICAS }
+    public enum Destino { MENU, COMPUTADOR, BUFFER, PROCESO, SIMULACION, METRICAS, SIMULACION_NUEVA }
     static final Color FONDO = new Color(246, 243, 234);
     static final Color TINTA = new Color(38, 58, 43);
     static final Color GRIS = new Color(119, 105, 85);
@@ -68,7 +68,7 @@ public class PanelPrincipal extends JPanel {
         lateral.add(marca);
         lateral.add(Box.createVerticalStrut(28));
         
-        String[] titulos = {"01   Inicio", "02   Computadores", "03   Buffers", "04   Procesos", "05   Simulación", "06   Métricas"};
+        String[] titulos = {"01   Inicio", "02   Computadores", "03   Buffers", "04   Procesos", "05   Simulación", "06   Métricas", "07   Nueva vista"};
         for (Destino destino : Destino.values()) {
             JButton boton = accion(titulos[destino.ordinal()], false);
             boton.setHorizontalAlignment(SwingConstants.LEFT);
@@ -94,6 +94,7 @@ public class PanelPrincipal extends JPanel {
         pantallas.add(editorProceso, Destino.PROCESO.name());
         monitor = new MonitorSimulacion(controller, () -> mostrarPanel(Destino.COMPUTADOR));
         pantallas.add(monitor, Destino.SIMULACION.name());
+        pantallas.add(new VistaSimulacionAlternativa(controller, monitor), Destino.SIMULACION_NUEVA.name());
         metricas = new PanelMetricas(controller);
         JPanel vistaMetricas = new JPanel(new BorderLayout(0, 16));
         vistaMetricas.setBackground(FONDO);

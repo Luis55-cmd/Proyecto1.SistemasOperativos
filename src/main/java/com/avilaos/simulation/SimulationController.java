@@ -47,7 +47,6 @@ public class SimulationController implements IClockTickable {
     private record LogEntry(long session, int cycle, String message) { }
     private final com.avilaos.core.structures.MyQueue<LogEntry> pendingLogs = new com.avilaos.core.structures.MyQueue<>();
     private boolean logPending;
-    private int omittedLogs;
     private volatile SimulationSnapshot snapshot;
     private volatile long session;
     private boolean refreshPending;
@@ -138,7 +137,6 @@ public class SimulationController implements IClockTickable {
 
         LogEntry event=new LogEntry(session,clock.getCycleCounter(),message);
         synchronized(logListeners) {
-            if(pendingLogs.size()==2000) {pendingLogs.dequeue(); omittedLogs++;}
             pendingLogs.enqueue(event);
             if(logPending) return;
             logPending=true;
@@ -150,17 +148,14 @@ public class SimulationController implements IClockTickable {
     private void flushLogs() {
         LogEntry[] batch;
         ILogListener[] listeners;
-        int omitted;
         synchronized(logListeners) {
             batch=new LogEntry[Math.min(100,pendingLogs.size())];
             for(int i=0;i<batch.length;i++) batch[i]=pendingLogs.dequeue();
             listeners=new ILogListener[logListeners.size()];
             for(int i=0;i<listeners.length;i++) listeners[i]=logListeners.get(i);
-            omitted=omittedLogs; omittedLogs=0;
         }
         try {
             for(ILogListener listener:listeners) {
-                if(omitted>0) listener.onLogAdded("[Log] "+omitted+" eventos omitidos por saturación");
                 for(LogEntry event:batch) if(event.session()==session)
                     listener.onLogAdded("[Ciclo "+event.cycle()+"] "+event.message());
             }

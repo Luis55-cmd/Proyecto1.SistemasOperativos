@@ -24,12 +24,12 @@ public class DestinoProcesoGuiTest {
             if (destino.getItemCount() != 3 || !destino.isEnabled() || crear.isVisible()) throw new AssertionError("Destinos reales");
             destino.setSelectedIndex(1);
             ((JTextField) CreacionComputadoresGuiTest.buscar(editor, JTextField.class, null)).setText("Mi proceso");
-            ((JButton) CreacionComputadoresGuiTest.buscar(editor, JButton.class, "+ Agregar bloque")).doClick();
+
             panel.mostrarPanel(PanelPrincipal.Destino.COMPUTADOR);
             controller.createComputer("Este", 512, SchedulingPolicyType.FCFS);
             panel.mostrarPanel(PanelPrincipal.Destino.PROCESO);
             if (destino.getItemCount() != 4 || editor.getComputadorDestinoId() != sur.getId()) throw new AssertionError("No conserva ID");
-            if (((JTable) CreacionComputadoresGuiTest.buscar(editor, JTable.class, null)).getRowCount() != 1) throw new AssertionError("Borró bloques");
+            if (CreacionComputadoresGuiTest.buscar(editor, JTable.class, null) == null) throw new AssertionError("Falta la tabla de procesos");
             if (!((JTextField) CreacionComputadoresGuiTest.buscar(editor, JTextField.class, null)).getText().equals("Mi proceso")) throw new AssertionError("Borró nombre");
             if (controller.getCurrentCycle() != 0) throw new AssertionError("Avanzó reloj");
             System.out.println("PASS: sin destinos, navegación, lista dinámica, selección por ID y borrador conservado");

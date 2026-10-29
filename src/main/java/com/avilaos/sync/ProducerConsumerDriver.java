@@ -16,8 +16,9 @@ import com.avilaos.core.model.ProcessType;
 public class ProducerConsumerDriver {
 
     private final NetworkSimulator networkSimulator;
-    private java.util.function.Consumer<String> eventListener;
-    public void setEventListener(java.util.function.Consumer<String> listener) { this.eventListener = listener; }
+    public interface IEventListener { void accept(String message); }
+    private IEventListener eventListener;
+    public void setEventListener(IEventListener listener) { this.eventListener = listener; }
     private void event(String message) { if (eventListener != null) eventListener.accept(message); }
 
     public ProducerConsumerDriver(int latencia) {

@@ -31,9 +31,10 @@ public class ComputerKernel {
 
     private IScheduler activeScheduler;
     private SchedulingPolicyType currentPolicy;
-    private java.util.function.Consumer<String> eventListener;
+    public interface IEventListener { void accept(String message); }
+    private IEventListener eventListener;
 
-    public void setEventListener(java.util.function.Consumer<String> listener) { this.eventListener = listener; }
+    public void setEventListener(IEventListener listener) { this.eventListener = listener; }
     private void event(String message) { if (eventListener != null) eventListener.accept(message); }
     private String proceso(ProcessControlBlock p) { return p.getName() + " (ID " + p.getId() + ", computador " + p.getComputerId() + ")"; }
     private String formatBuffer(ProcessControlBlock p) {
@@ -85,6 +86,7 @@ public class ComputerKernel {
             p.setBlockReason(BlockReason.NONE);
             this.newQueue.removeElement(p);
             this.readyQueue.enqueue(p);
+            reorderReadyQueue(com.getPolitica(), false);
             return true;
         } else {
             p.setState(ProcessState.NUEVO);
@@ -120,6 +122,9 @@ public class ComputerKernel {
                 // FIFO estricto: si el primer proceso en espera no cabe, se detiene la admisión
                 break;
             }
+        }
+        if (admittedCount > 0) {
+            reorderReadyQueue(com.getPolitica(), false);
         }
         return admittedCount;
     }
@@ -180,6 +185,7 @@ public class ComputerKernel {
                 break;
             case LISTO:
                 this.readyQueue.enqueue(p);
+                reorderReadyQueue(com.getPolitica(), false);
                 break;
             case BLOQUEADO:
                 this.blockedQueue.enqueue(p);
@@ -208,6 +214,7 @@ public class ComputerKernel {
                 this.newQueue.removeElement(p);
                 this.readyQueue.enqueue(p);
                 p.setState(ProcessState.LISTO);
+                reorderReadyQueue(com.getPolitica(), false);
             }
         }
     }
@@ -285,6 +292,55 @@ public class ComputerKernel {
     /**
      * Actualiza el quantum del planificador Round Robin activo en caliente.
      */
+    private static final MyLinkedList.MyComparator<ProcessControlBlock> FIFO_COMPARATOR = new MyLinkedList.MyComparator<ProcessControlBlock>() {
+        @Override
+        public int compare(ProcessControlBlock p1, ProcessControlBlock p2) {
+            int cmp = Integer.compare(p1.getArrivalCycle(), p2.getArrivalCycle());
+            if (cmp == 0) {
+                return Integer.compare(p1.getId(), p2.getId());
+            }
+            return cmp;
+        }
+    };
+
+    public void onPolicyChanged(Computer com) {
+        if (com == null) return;
+        SchedulingPolicyType newPolicy = com.getPolitica() != null ? com.getPolitica() : SchedulingPolicyType.FCFS;
+        getOrUpdateScheduler(com);
+        reorderReadyQueue(newPolicy, true);
+    }
+
+    public void reorderReadyQueue(SchedulingPolicyType policy, boolean restoreFifoIfSequential) {
+        SchedulingPolicyType effectivePolicy = (policy != null) ? policy : this.currentPolicy;
+        if (this.readyQueue == null || this.readyQueue.size() <= 1 || effectivePolicy == null) {
+            return;
+        }
+        if (effectivePolicy == SchedulingPolicyType.EDF) {
+            if (this.activeScheduler instanceof EdfScheduler edf) {
+                edf.sortReadyQueue(this.readyQueue);
+            } else {
+                new EdfScheduler().sortReadyQueue(this.readyQueue);
+            }
+        } else if (effectivePolicy == SchedulingPolicyType.PRIORITY_PREEMPTIVE) {
+            if (this.activeScheduler instanceof PreemptivePriorityScheduler prio) {
+                prio.sortReadyQueue(this.readyQueue);
+            } else {
+                new PreemptivePriorityScheduler().sortReadyQueue(this.readyQueue);
+            }
+        } else if (restoreFifoIfSequential
+                && (effectivePolicy == SchedulingPolicyType.FCFS || effectivePolicy == SchedulingPolicyType.ROUND_ROBIN)) {
+            MyLinkedList<ProcessControlBlock> list = new MyLinkedList<>();
+            while (!this.readyQueue.isEmpty()) {
+                list.add(this.readyQueue.dequeue());
+            }
+            list.sort(FIFO_COMPARATOR);
+            MyLinkedList<ProcessControlBlock>.MyLinkedListIterator iter = list.iterator();
+            while (iter.hasNext()) {
+                this.readyQueue.enqueue(iter.next());
+            }
+        }
+    }
+
     public void updateQuantum(int quantum) {
         if (this.activeScheduler instanceof RoundRobinScheduler rr) {
             rr.setQuantum(quantum);
@@ -405,6 +461,7 @@ public class ComputerKernel {
         p.setBlockReason(BlockReason.NONE);
         this.readyQueue.removeElement(p); // Prevenir duplicados
         this.readyQueue.enqueue(p);
+        reorderReadyQueue(this.currentPolicy, false);
         if (estabaBloqueado) event(proceso(p) + " despertó y pasó a listos");
     }
 
@@ -521,7 +578,9 @@ public class ComputerKernel {
         currentRunning = cpu.getPCB();
 
         // 5. Ejecutar 1 ciclo si hay un proceso en CPU
+        ProcessControlBlock executedThisCycle = null;
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
+            executedThisCycle = currentRunning;
             comp.incrementarCicloActivo();
             if (currentRunning.getStartCycle() < 0) currentRunning.setStartCycle(currentCycle);
             if (currentRunning.getType() == ProcessType.PRODUCER
@@ -576,7 +635,8 @@ public class ComputerKernel {
         // 5.5 Tiempo de espera: todo proceso admitido que no ejecutó en este ciclo (listo o bloqueado)
         for (int i = 0; i < this.processList.size(); i++) {
             ProcessControlBlock w = this.processList.get(i);
-            if (w != null && (w.getState() == ProcessState.LISTO || w.getState() == ProcessState.BLOQUEADO)) {
+            if (w != null && w != executedThisCycle
+                    && (w.getState() == ProcessState.LISTO || w.getState() == ProcessState.BLOQUEADO)) {
                 w.incrementWaitingTime();
             }
         }
@@ -599,6 +659,9 @@ public class ComputerKernel {
                     terminateProcess(comp, p);
                 }
             }
+        }
+        if (this.currentPolicy == SchedulingPolicyType.EDF) {
+            reorderReadyQueue(this.currentPolicy, false);
         }
     }
 
@@ -661,6 +724,7 @@ public class ComputerKernel {
                 this.blockedQueue.enqueue(p);
             }
         }
+        reorderReadyQueue(this.currentPolicy, false);
     }
 
     private void cleanupProcessResources(ProcessControlBlock pcb, MyLinkedList<Buffer> buffers) {

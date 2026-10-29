@@ -36,6 +36,7 @@ public class EdfScheduler implements IScheduler {
     @Override
     public ProcessControlBlock scheduleNext(MyQueue<ProcessControlBlock> queue, ProcessControlBlock currentRunning) {
         MyQueue<ProcessControlBlock> targetQueue = (queue != null) ? queue : this.readyQueue;
+        sortQueue(targetQueue);
 
         // Si hay un proceso en CPU, verificamos si hay algún candidato con deadline más urgente (desalojo)
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
@@ -101,6 +102,10 @@ public class EdfScheduler implements IScheduler {
     public void onClockTick() {
         // Mantiene la cola ordenada tras el decremento de deadlines
         sortQueue(this.readyQueue);
+    }
+
+    public void sortReadyQueue(MyQueue<ProcessControlBlock> queue) {
+        sortQueue(queue);
     }
 
     private void sortQueue(MyQueue<ProcessControlBlock> queue) {

@@ -1,7 +1,9 @@
-# 🏔️ ÁvilaOS — Simulador de Sistema Operativo Distribuido
+# 🏔️ ÁvilaOS — Simulador de Sistema Operativo Distribuido en Tiempo Real
 
 > **Proyecto 1 — Sistemas Operativos**  
-> Simulador en tiempo real de un sistema operativo distribuido monohilo sobre un clúster de computadores sincronizados por un reloj global, con estructuras de datos propias, 4 políticas de planificación intercambiables en caliente y sincronización Productor-Consumidor (local y remota) mediante semáforos de Stallings.
+> Simulador en tiempo real de un sistema operativo distribuido monohilo sobre un clúster de computadores sincronizados por un reloj global, con estructuras de datos 100% propias, 4 políticas de planificación intercambiables en caliente y sincronización Productor-Consumidor (local y remota) mediante semáforos de Stallings y latencia de red.
+
+📄 **[Ver Informe Técnico Completo (`docs/INFORME_TECNICO.md`)](docs/INFORME_TECNICO.md)**
 
 ---
 
@@ -19,22 +21,24 @@
 ## ✨ Características Principales
 
 * **Clúster Distribuido Reutilizable:** Soporte para $N \ge 2$ computadores instanciados a partir de una única clase `Computer` y `ComputerKernel`, cada uno con su propia `CPU`, `RAM`, `DMA`, `MemoryManager` y colas independientes (`Nuevos`, `Listos`, `Bloqueados`, `Terminados`).
-* **Estructuras de Datos 100% Propias:** Implementación desde cero de `Node<T>`, `MyLinkedList<T>`, `MyQueue<T>` y `MyStack<T>` sin utilizar ninguna colección de `java.util.*`.
+* **Estructuras de Datos 100% Propias (`com.avilaos.core.structures`):** Implementación desde cero de `Node<T>`, `MyLinkedList<T>` (con ordenamiento in-situ `sort`), `MyQueue<T>` y `MyStack<T>`, sin utilizar ninguna colección de `java.util.*`.
+* **Modelo Monohilo 1:1 (`ProcessControlBlock`):** Cada proceso mantiene sus registros de hardware (`PC`, `MAR`), estado (`NUEVO`, `LISTO`, `EJECUTANDO`, `BLOQUEADO`, `SALIENTE`), modo de ejecución (`USER` / `KERNEL`), prioridad, *deadline*, tiempo de espera acumulado y titularidad de permisos semafóricos.
 * **4 Políticas de Planificación en Caliente (`IScheduler`):**
-  * **FCFS** (*First-Come, First-Served*)
-  * **Round Robin** (con *quantum* configurable en vivo por computador)
-  * **EDF** (*Earliest Deadline First* apropiativo)
-  * **Prioridades Apropiativas** (*Preemptive Priority*)
+  * **FCFS (`FcfsScheduler`):** *First-Come, First-Served* no apropiativo.
+  * **Round Robin (`RoundRobinScheduler`):** Apropiativo con *quantum* configurable en tiempo real por computador.
+  * **EDF (`EdfScheduler`):** *Earliest Deadline First* apropiativo por menor *deadline* restante.
+  * **Prioridades Apropiativas (`PreemptivePriorityScheduler`):** Desalojo inmediato por mayor prioridad.
+  * **Reordenamiento visual inmediato:** Al cambiar la política de cualquier computador desde la GUI, su cola de listos (`readyQueue`) se reordena y actualiza al instante en pantalla.
 * **Sincronización Productor-Consumidor (Algoritmo de Stallings):** Buffers acotados alojados en la RAM de un computador anfitrión, protegidos con tres semáforos (`mutex`, `vacios`, `llenos`), soportando acceso **local** y **remoto** con **latencia de red** configurable en ciclos.
 * **Concurrencia Real y Seguridad de Hilos:** Reloj global (`GlobalClock`) en hilo daemon independiente, cola de comandos (`GuiCommands`), exclusión mutua del modelo (`StateAccess`) y publicación de instantáneas inmutables (`SimulationSnapshot`) hacia la GUI Swing.
-* **Métricas y Gráficas en Tiempo Real (`JFreeChart`):** Visualización por computador y global de **Utilización de CPU**, **Throughput**, **Tasa de éxito de Deadlines**, **Tiempo de Espera**, **Tiempo de Respuesta** y **Equidad**, además de persistencia **JSON** (`Gson`) y exportación de logs.
+* **Métricas en Tiempo Real (`JFreeChart`) y Persistencia JSON (`Gson`):** Visualización por computador y global de **Utilización de CPU (%)**, **Throughput (proc/ciclo)**, **Tasa de éxito de Deadlines (%)** y **Tiempo promedio de espera (ticks)**, junto con exportación/importación validada de escenarios JSON (`ValidarCarga`) y exportación de bitácoras `.log`.
 
 ---
 
 ## 🚀 Requisitos y Ejecución
 
 * **Java:** JDK 21 o superior (configurado para JDK 25 en `pom.xml`).
-* **IDE:** Apache NetBeans 23+ (proyecto Maven nativo).
+* **IDE recomendado:** Apache NetBeans 23+ (proyecto Maven nativo).
 * **Librerías autorizadas (vía Maven):** `org.jfree:jfreechart:1.5.4` y `com.google.code.gson:gson:2.11.0`.
 
 ### Ejecución desde Apache NetBeans
@@ -45,7 +49,7 @@
 ### Ejecución desde Terminal (PowerShell)
 ```powershell
 cd Proyecto1.SistemasOperativos
-& "C:\Program Files\NetBeans-23\netbeans\java\maven\bin\mvn.cmd" compile exec:java
+mvn clean compile exec:java "-Dexec.mainClass=com.avilaos.Main"
 ```
 
 ---
@@ -54,8 +58,8 @@ cd Proyecto1.SistemasOperativos
 
 ```mermaid
 flowchart TB
-    subgraph presentacion["Capa 3: Presentación (Swing GUI — Observador Desacoplado)"]
-        gui["PanelPrincipal · MonitorSimulacion · EditorProceso · PanelMetricas"]
+    subgraph presentacion["Capa 3: Presentación (com.avilaos.gui — Observador Desacoplado)"]
+        gui["PanelPrincipal · MonitorSimulacion · EditorProceso · PanelMetricas · ValidarCarga · GuiRequest"]
     end
 
     subgraph aplicacion["Capa 2: Control, Concurrencia y Sincronización Distribuida"]
@@ -65,12 +69,12 @@ flowchart TB
     end
 
     subgraph computador["Capa 1: Computador Simulado (Instancia repetible en el clúster)"]
-        subgraph software["Núcleo del Sistema Operativo"]
+        subgraph software["Núcleo del Sistema Operativo (com.avilaos.core)"]
             procesos["ProcessControlBlock (PCB — Modelo Monohilo 1:1)"]
             so["ComputerKernel · IScheduler (FCFS, RR, EDF, Prioridades)"]
             estructuras["Estructuras Propias: MyLinkedList · MyQueue · MyStack · Node"]
         end
-        subgraph hardware["Hardware Simulado"]
+        subgraph hardware["Hardware y Memoria (com.avilaos.hardware / memory)"]
             cpu["CPU (PC, MAR, IR, ExecutionMode: USER / KERNEL)"]
             ram["RAM & MemoryManager (Admisión y Buffers)"]
             es["DMA (Controlador E/S)"]
@@ -85,7 +89,7 @@ flowchart TB
     procesos -->|"Fases de ciclo y bloqueos"| so
     so -->|"dispatch() y cambio de contexto"| cpu
     so -->|"semWait / semSignal / Red"| sync
-    so -->|"allocateMemory / releaseMemory"| ram
+    so -->|"allocateMemory / freeMemory"| ram
     reloj -.->|"tick(currentCycle) — IClockTickable"| control
     control -.->|"executeCycle()"| so
     so -.->|"tick(currentCycle)"| cpu
@@ -158,8 +162,24 @@ classDiagram
         WAITING_IO
     }
 
+    class MyLinkedList~T~ {
+        +append(T data) void
+        +get(int index) T
+        +deletePos(int pos) void
+        +sort(MyComparator~T~ comp) void
+        +size() int
+    }
+
+    class MyQueue~T~ {
+        +enqueue(T item) void
+        +dequeue() T
+        +peek() T
+        +removeElement(T data) boolean
+        +toArray() Object[]
+    }
+
     class GlobalClock {
-        -GlobalClock instance$
+        -GlobalClock INSTANCE$
         -MyLinkedList~IClockTickable~ subscribers
         -int cycleCounter
         -int cycleDurationMs
@@ -186,6 +206,7 @@ classDiagram
         +createComputer(String name, int ramSize, SchedulingPolicyType policy, int quantum) Computer
         +createProcess(...) ProcessControlBlock
         +createBuffer(int hostId, int storage, int memory) Buffer
+        +setComputerPolicy(int id, SchedulingPolicyType policy) void
         +selectLeastLoadedComputer() Computer
         +tick(int currentCycle) void
         +reset() void
@@ -209,6 +230,8 @@ classDiagram
         -int deadlinesCumplidos
         -int totalTiempoRespuesta
         -int totalTiempoEspera
+        +setPolitica(SchedulingPolicyType politica) void
+        +setQuantum(int quantum) void
         +registrarCicloObservado() void
         +incrementarCicloActivo() void
         +registrarTerminacion(ProcessControlBlock pcb, int cicloActual) void
@@ -222,6 +245,8 @@ classDiagram
         -MyQueue~ProcessControlBlock~ endedQueue
         -IScheduler activeScheduler
         +admitProcess(Computer com, ProcessControlBlock p) boolean
+        +onPolicyChanged(Computer com) void
+        +reorderReadyQueue(SchedulingPolicyType policy, boolean restoreFifo) void
         +dispatch(Computer com, ProcessControlBlock p) void
         +executeCycle(Computer comp, int currentCycle, ProducerConsumerDriver syncDriver, MyLinkedList~Buffer~ buffers) void
         +blockProcess(Computer com, ProcessControlBlock p) void
@@ -263,13 +288,14 @@ classDiagram
         -ProcessControlBlock PCB
         -ExecutionMode mode
         +tick(int currentCycle) void
+        +setPCB(ProcessControlBlock PCB) void
     }
 
     class MemoryManager {
         -RAM ram
         +hasAvailableMemory(int amount) boolean
         +allocateMemory(int amount) boolean
-        +releaseMemory(int amount) void
+        +freeMemory(int amount) void
     }
 
     class Buffer {
@@ -277,6 +303,7 @@ classDiagram
         -int idComp
         -int storage
         -int sizeInMemory
+        -int latency
         -Semaphore mutex
         -Semaphore vacios
         -Semaphore llenos
@@ -295,6 +322,7 @@ classDiagram
         -NetworkSimulator networkSimulator
         +executeCycle(ProcessControlBlock pcb, Buffer buffer) boolean
         +stepNetworkDelay(ProcessControlBlock pcb) boolean
+        +wakeUpProcess(ProcessControlBlock pcb)$ void
     }
 
     class NetworkSimulator {
@@ -305,9 +333,17 @@ classDiagram
     }
 
     class FcfsScheduler
-    class RoundRobinScheduler
-    class EdfScheduler
-    class PreemptivePriorityScheduler
+    class RoundRobinScheduler {
+        -int quantum
+        -int currentQuantumRemaining
+        +setQuantum(int quantum) void
+    }
+    class EdfScheduler {
+        +sortReadyQueue(MyQueue~ProcessControlBlock~ queue) void
+    }
+    class PreemptivePriorityScheduler {
+        +sortReadyQueue(MyQueue~ProcessControlBlock~ queue) void
+    }
 
     IClockTickable <|.. SimulationController
     IClockTickable <|.. CPU
@@ -331,6 +367,7 @@ classDiagram
     ProcessControlBlock --> ProcessType
     ProcessControlBlock --> ExecutionMode
     ProcessControlBlock --> BlockReason
+    CPU --> ExecutionMode
     Computer --> SchedulingPolicyType
 ```
 
@@ -338,12 +375,13 @@ classDiagram
 
 ## 🔄 Diagrama UML de Secuencia
 
-Interacción completa durante un ciclo del reloj global (`tick`), incluyendo planificación, acceso remoto de un proceso Productor/Consumidor con latencia de red, protocolo de semáforos de Stallings (`semWait` / `semSignal`) y publicación hacia la GUI:
+Interacción completa durante un ciclo del reloj global (`tick`), incluyendo exclusión mutua (`StateAccess`), planificación, acceso remoto de un proceso Productor/Consumidor con latencia de red, protocolo de semáforos de Stallings (`semWait` / `semSignal`) y publicación hacia la GUI:
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Clock as GlobalClock (Thread)
+    participant SA as StateAccess
     participant Ctrl as SimulationController
     participant Kernel as ComputerKernel
     participant Sched as IScheduler
@@ -354,6 +392,7 @@ sequenceDiagram
     participant Snap as SimulationSnapshot
     participant GUI as MonitorSimulacion / PanelMetricas (EDT)
 
+    Clock->>SA: enter()
     Clock->>Ctrl: tick(currentCycle)
     activate Ctrl
     loop Por cada Computer del clúster
@@ -363,7 +402,7 @@ sequenceDiagram
         Kernel->>Kernel: checkDeadlines() · advanceNetworkDelays() · advanceIOBlocks() · flushWokenProcesses()
         Kernel->>Sched: scheduleNext(readyQueue, currentRunning)
         Sched-->>Kernel: nextProcess (PCB)
-        Kernel->>CPU: setPCB(nextProcess) · setPC() · setMAR() · setMode()
+        Kernel->>CPU: setPCB(nextProcess) · setPC() · setMAR() · setMode(USER si != null, KERNEL si == null)
 
         alt Proceso es PRODUCER o CONSUMER
             Kernel->>Driver: executeCycle(pcb, targetBuffer)
@@ -395,11 +434,12 @@ sequenceDiagram
         end
 
         Kernel->>CPU: tick(currentCycle)
-        Kernel->>Kernel: Incrementa waitingTime a procesos en LISTO o BLOQUEADO
+        Kernel->>Kernel: Incrementa waitingTime en LISTO/BLOQUEADO que no ejecutaron en este ciclo
         deactivate Kernel
     end
 
-    Ctrl->>Snap: publishSnapshot() (Copia inmutable del ciclo)
+    Ctrl->>SA: exit()
+    SA->>Snap: publishSnapshot() (Copia inmutable del ciclo)
     Ctrl->>GUI: SwingUtilities.invokeLater(actualizarVista / actualizarMetricas)
     deactivate Ctrl
 ```
@@ -434,9 +474,10 @@ src/main/java/com/avilaos/
 │   │   └── PreemptivePriorityScheduler.java # Política de Prioridades Apropiativas
 │   └── structures/
 │       ├── Node.java                      # Nodo genérico enlazado
-│       ├── MyLinkedList.java              # Lista enlazada genérica propia
+│       ├── MyLinkedList.java              # Lista enlazada genérica propia con sort in-situ
 │       ├── MyQueue.java                   # Cola FIFO genérica propia
-│       └── MyStack.java                   # Pila LIFO genérica propia
+│       ├── MyStack.java                   # Pila LIFO genérica propia
+│       └── EstructuraVaciaException.java  # Excepción de acceso a estructura vacía
 ├── hardware/
 │   ├── Computer.java                      # Unidad de computador reutilizable y métricas locales
 │   ├── CPU.java                           # Procesador simulado (PC, MAR, IR, Mode)
@@ -457,7 +498,7 @@ src/main/java/com/avilaos/
     ├── EditorProceso.java                 # Constructor interactivo de procesos con validación
     ├── MonitorSimulacion.java             # Monitor en tiempo real, colas, buffers y JSON
     ├── PanelMetricas.java                 # Gráfica JFreeChart multi-métrica y tablas de KPIs
-    ├── ValidarCarga.java                  # Validador estricto de esquemas JSON
+    ├── ValidarCarga.java                  # Validador estricto de esquemas JSON y prevención de overflow
     ├── GuiRequest.java                    # Puente seguro de solicitudes EDT -> Modelo
     └── LogoAvila.java                     # Identidad gráfica vectorial
 ```

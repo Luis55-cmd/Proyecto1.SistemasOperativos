@@ -47,6 +47,9 @@ public class Computer {
         this.politica = politica;
         this.quantum = Math.max(1, quantum);
         this.memoryManager = (ram != null) ? new com.avilaos.memory.MemoryManager(ram) : null;
+        if (this.kernel != null) {
+            this.kernel.onPolicyChanged(this);
+        }
     }
 
     // --- Métodos para Métricas de Rendimiento ---
@@ -95,6 +98,9 @@ public class Computer {
 
     public void setPolitica(SchedulingPolicyType politica) {
         this.politica = politica;
+        if (this.kernel != null) {
+            this.kernel.onPolicyChanged(this);
+        }
     }
 
     public int getQuantum() {

@@ -954,6 +954,8 @@ public final class MonitorSimulacion extends JPanel {
 
             spinnerQuantum.setValue(c.getQuantum());
             spinnerQuantum.setPreferredSize(new Dimension(55, 26));
+            ((javax.swing.text.DefaultFormatter) ((JSpinner.DefaultEditor) spinnerQuantum.getEditor())
+                    .getTextField().getFormatter()).setCommitsOnValidEdit(true);
             boolean esRRInicial = (c.getPolitica() == SchedulingPolicyType.ROUND_ROBIN);
             labelQuantum.setVisible(esRRInicial);
             spinnerQuantum.setVisible(esRRInicial);

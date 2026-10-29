@@ -1,4 +1,4 @@
-# Informe Técnico — Simulador de Sistemas Operativos (AvilaOS)
+# Informe Técnico — Simulador de Sistemas Operativos (ÁvilaOS)
 
 **Universidad Metropolitana (UNIMET)**  
 **Asignatura:** Sistemas Operativos  
@@ -16,12 +16,12 @@
    - [5.1 Estructuras de Datos Propias (`com.avilaos.core.structures`)](#51-estructuras-de-datos-propias-comavilaoscorestructures)
    - [5.2 Modelo del Proceso (`com.avilaos.core.model`)](#52-modelo-del-proceso-comavilaoscoremodel)
    - [5.3 Algoritmos de Planificación (`com.avilaos.core.scheduler`)](#53-algoritmos-de-planificación-comavilaoscorescheduler)
-   - [5.4 Sincronización y Buffers Compartidos (`com.avilaos.sync`)](#54-sincronización-y-buffers-compartidos-comavilaossync)
-   - [5.5 Memoria Principal y Swapping (`com.avilaos.memory`)](#55-memoria-principal-y-swapping-comavilaosmemory)
-   - [5.6 Hardware y Kernel del Nodo (`com.avilaos.hardware` y `com.avilaos.core.kernel`)](#56-hardware-y-kernel-del-nodo-comavilaoshardware-y-comavilaoscorekernel)
-   - [5.7 Concurrencia, Reloj y Persistencia (`com.avilaos.concurrency` y `com.avilaos.simulation`)](#57-concurrencia-reloj-y-persistencia-comavilaosconcurrency-y-comavilaossimulation)
-   - [5.8 Interfaz Gráfica y Gráficas de Rendimiento (`com.avilaos.gui`)](#58-interfaz-gráfica-y-gráficas-de-rendimiento-comavilaosgui)
-6. [Diagramas UML ( compatibles con GitHub / Mermaid )](#6-diagramas-uml--compatibles-con-github--mermaid-)
+   - [5.4 Sincronización, Red y Buffers Compartidos (`com.avilaos.sync`)](#54-sincronización-red-y-buffers-compartidos-comavilaossync)
+   - [5.5 Memoria Principal RAM (`com.avilaos.memory` y `com.avilaos.hardware`)](#55-memoria-principal-ram-comavilaosmemory-y-comavilaoshardware)
+   - [5.6 Hardware, Reloj Global y Kernel del Nodo (`com.avilaos.hardware` y `com.avilaos.core.kernel`)](#56-hardware-reloj-global-y-kernel-del-nodo-comavilaoshardware-y-comavilaoscorekernel)
+   - [5.7 Concurrencia, Controlador y Snapshots (`com.avilaos.concurrency` y `com.avilaos.simulation`)](#57-concurrencia-controlador-y-snapshots-comavilaosconcurrency-y-comavilaossimulation)
+   - [5.8 Interfaz Gráfica, Persistencia JSON y Métricas (`com.avilaos.gui`)](#58-interfaz-gráfica-persistencia-json-y-métricas-comavilaosgui)
+6. [Diagramas UML (compatibles con GitHub / Mermaid)](#6-diagramas-uml-compatibles-con-github--mermaid)
    - [6.1 Diagrama UML de Clases](#61-diagrama-uml-de-clases)
    - [6.2 Diagrama UML de Secuencia](#62-diagrama-uml-de-secuencia)
 7. [Métricas de Rendimiento y Análisis de Políticas de Planificación](#7-métricas-de-rendimiento-y-análisis-de-políticas-de-planificación)
@@ -30,96 +30,97 @@
 
 ## 1. Resumen Ejecutivo y Modelo de Procesos Monohilo
 
-**AvilaOS** es un simulador en tiempo real desarrollado en Java 25 y Swing que modela una red de computadores interconectados mediante buffers acotados remotos. Cada computador opera de forma autónoma con su propio procesador (`CPU`), memoria principal (`RAM`) con paginación/partición fija y memoria secundaria (`Swap`), y su propio núcleo de sistema operativo (`ComputerKernel`) capaz de conmutar en caliente entre cuatro políticas de planificación: **FCFS**, **Round Robin (RR)**, **SRT (Shortest Remaining Time)** y **EDF (Earliest Deadline First)**.
+**ÁvilaOS** es un simulador de sistema operativo distribuido en tiempo real desarrollado en Java y Swing que modela un clúster de computadores interconectados mediante buffers acotados locales y remotos. Cada computador opera como una instancia reutilizable con su propio procesador (`CPU`), memoria principal (`RAM`), administrador de memoria (`MemoryManager`) y núcleo de sistema operativo (`ComputerKernel`), capaz de alternar en caliente entre cuatro políticas de planificación: **FCFS (`FcfsScheduler`)**, **Round Robin (`RoundRobinScheduler`)**, **EDF (`EdfScheduler`)** y **Prioridades Apropiativas (`PreemptivePriorityScheduler`)**.
 
 ### Modelo Monohilo (Relación 1:1 PCB ↔ TCB)
-Siguiendo el diseño teórico de *William Stallings*, el simulador implementa un modelo de **procesos monohilo** donde existe una correspondencia **1 a 1** entre el **Bloque de Control de Proceso (`PCB`)** y el **Bloque de Control de Hilo (`TCB`)**:
-- El `ProcessControlBlock` unifica tanto los atributos de propiedad de recursos (identificador `PID`, estado en memoria RAM/Swap, espacio de direcciones y tipo de proceso) como los atributos de ejecución y contexto de procesador (`PC` — *Program Counter*, `MAR` — *Memory Address Register*, estado de ejecución, prioridad, *deadline* y razón de bloqueo).
-- Todas las estructuras de almacenamiento interno (listas enlazadas y colas FIFO) fueron construidas desde cero en el paquete `com.avilaos.core.structures` sin emplear ninguna colección de `java.util`.
+Siguiendo el diseño teórico de *William Stallings*, el simulador implementa un modelo de **procesos monohilo** donde existe una correspondencia **1 a 1** entre el **Bloque de Control de Proceso (`PCB`)** y el flujo de ejecución:
+- La clase `ProcessControlBlock` unifica tanto los atributos de propiedad de recursos (identificador único `id`, `computerId`, memoria requerida/asignada `assignedMemory`, tipo de proceso y titularidad de permisos de buffer) como los atributos de contexto de ejecución en procesador (`programCounter` — `PC`, `memoryAddressRegister` — `MAR`, `state`, `mode`, `priority`, `deadline`, `remainingDeadline`, `waitingTime` y `blockReason`).
+- Todas las estructuras de almacenamiento interno (`MyLinkedList<T>`, `MyQueue<T>`, `MyStack<T>` y `Node<T>`) fueron construidas desde cero en el paquete `com.avilaos.core.structures` sin utilizar ninguna colección de `java.util`.
 
 ---
 
 ## 2. Arquitectura por Capas
 
-El sistema está diseñado bajo una arquitectura estricta de cuatro capas que desacopla la interfaz gráfica de usuario (`Swing`) del motor de simulación y de las estructuras del núcleo:
+El sistema está diseñado bajo una arquitectura desacoplada por capas que separa la interfaz gráfica (`Swing`) del controlador de simulación, de los módulos de memoria/sincronización y del núcleo del sistema operativo:
 
 ```mermaid
 flowchart TB
   subgraph GUI["Capa de Presentación (com.avilaos.gui)"]
-    VP["VentanaPrincipal"]
-    MS["MonitorSimulacion\n(Nodos, Reloj, Logs, Controles)"]
+    PP["PanelPrincipal\n(Navegación, Computadores, Buffers)"]
+    EP["EditorProceso\n(Secuencias CPU/E/S y Prod/Cons)"]
+    MS["MonitorSimulacion\n(Tarjetas CPU, 4 Colas, Buffers, Reloj, Log, JSON)"]
     PM["PanelMetricas\n(JFreeChart: CPU, Throughput, Éxito, Espera)"]
-    PC["PanelComputadores"]
-    PB["PanelBuffers"]
-    PP["PanelProcesos"]
-    GC["GuiCommands\n(Ejecución segura fuera del EDT)"]
+    VC["ValidarCarga\n(Validador estricto de JSON)"]
+    GR["GuiRequest\n(Puente asíncrono EDT -> Worker)"]
   end
 
-  subgraph CTRL["Capa de Simulación y Control (com.avilaos.simulation / concurrency)"]
-    SC["SimulationController\n(Orquestador general y de red)"]
-    SS["SimulationSnapshot\n(DTO inmutable para la GUI)"]
-    SM["SimulationConfigManager\n(Persistencia JSON manual)"]
-    CS["ClockGenerator\n(Hilo Daemon de Reloj Global)"]
-    SA["StateAccess\n(Exclusión mutua del estado global)"]
+  subgraph CTRL["Capa de Simulación y Concurrencia (com.avilaos.simulation / concurrency)"]
+    SC["SimulationController\n(Fachada y Orquestador del Clúster)"]
+    SS["SimulationSnapshot\n(DTO inmutable publicado con volatile)"]
+    GCmd["GuiCommands\n(Hilo trabajador y cola propia de comandos)"]
+    SA["StateAccess\n(Semáforo binario justo reentrante)"]
   end
 
-  subgraph KERNEL_HW["Capa de Kernel, Hardware, Memoria y Sincronización"]
-    C["Computer\n(Contenedor de Hardware + Métricas)"]
-    CK["ComputerKernel\n(Planificador CP/MP/LP + Red)"]
-    CPU["CPU\n(PC, MAR, USER/KERNEL)"]
-    MEM["MemoryManager\n(RAM y Swap)"]
-    SB["SharedBuffer\n(Buffer circular + Semáforos)"]
-    MSem["ManualSemaphore\n(waitSem / signalSem de Stallings)"]
-    SCH["IScheduler\n(FCFS, RR, SRT, EDF)"]
+  subgraph SYNC_MEM["Capa de Memoria y Sincronización Distribuida (com.avilaos.memory / sync)"]
+    MM["MemoryManager\n(Control contable de RAM)"]
+    BUF["Buffer\n( Semáforos mutex, llenos, vacíos + Cola FIFO )"]
+    PCD["ProducerConsumerDriver\n(Protocolo de Stallings en 6 fases)"]
+    NS["NetworkSimulator\n(Latencia de red remota)"]
   end
 
-  subgraph CORE["Capa Base: Modelo y Estructuras Propias (com.avilaos.core)"]
-    PCB["ProcessControlBlock\n(PCB/TCB 1:1)"]
-    SL["SimpleList<T>"]
-    Q["Queue<T>"]
-    N["Node<T>"]
+  subgraph KERNEL_HW["Capa de Kernel, Hardware, Planificación y Estructuras (com.avilaos.core / hardware)"]
+    C["Computer\n(Contenedor de Hardware y Métricas)"]
+    CK["ComputerKernel\n(Admisión, Despacho, Ciclo de CPU y Colas)"]
+    GC["GlobalClock\n(Hilo Daemon de Reloj Global)"]
+    CPU["CPU & RAM & DMA"]
+    SCH["IScheduler\n(FCFS, RoundRobin, EDF, PreemptivePriority)"]
+    PCB["ProcessControlBlock\n(Modelo 1:1 PCB/TCB)"]
+    EDD["MyLinkedList<T> · MyQueue<T> · MyStack<T> · Node<T>"]
   end
 
-  VP --> MS & PM & PC & PB & PP
-  MS & PM & PC & PB & PP --> GC
-  GC --> SC
-  SC --> SS & SM & CS & SA
-  SC --> C & SB
-  C --> CK & CPU & MEM
-  CK --> SCH & CPU & MEM & SB
-  SB --> MSem & Q
-  CK & SCH & MEM & CPU & MSem --> PCB
-  C & CK & SCH & MEM & SB & MSem --> SL & Q
-  SL & Q --> N
+  PP --> EP & MS & PM
+  PP & EP & MS --> GR
+  MS --> VC
+  GR --> GCmd --> SA
+  GR --> SC
+  SC --> SS & GC & SA
+  SC --> C & BUF & PCD
+  PCD --> BUF & NS
+  C --> CK & CPU & MM
+  CK --> SCH & CPU & MM & PCD & BUF
+  CK & SCH & BUF & PCD --> PCB
+  CK & SCH & BUF & SC & GC & GCmd --> EDD
 ```
 
 ---
 
 ## 3. Enumerados (`Enums`) Utilizados
 
-Todos los estados, modos de operación y políticas del sistema operativo están tipados mediante enumerados ubicados en el paquete `com.avilaos.core.enums`:
+Todos los estados, modos de operación y políticas del sistema operativo están definidos mediante enumerados en `com.avilaos.core.model`:
 
 | Enum | Valores Definidos | Propósito y Uso en el Simulador |
 | :--- | :--- | :--- |
-| **`ProcessState`** | `NUEVO`, `LISTO`, `EJECUCION`, `BLOQUEADO`, `TERMINADO`, `LISTO_SUSPENDIDO`, `BLOQUEADO_SUSPENDIDO` | Modela el diagrama de **7 estados de Stallings**. Permite distinguir procesos residentes en memoria principal (`LISTO`, `BLOQUEADO`) de aquellos intercambiados a memoria secundaria Swap (`LISTO_SUSPENDIDO`, `BLOQUEADO_SUSPENDIDO`). |
-| **`ProcessType`** | `LOCAL`, `PRODUCER`, `CONSUMER` | Clasifica el comportamiento del proceso: `LOCAL` ejecuta ráfagas de CPU/E/S internas; `PRODUCER` genera un ítem al finalizar su trabajo y lo deposita en un `SharedBuffer` remoto; `CONSUMER` extrae un ítem de un `SharedBuffer` remoto antes de procesarlo. |
-| **`ExecutionMode`** | `USER`, `KERNEL` | Indica el nivel de privilegio actual de la `CPU`. Cuando la CPU ejecuta instrucciones de un proceso de usuario opera en `USER`; cuando la CPU está libre (ociosa), atiende una rutina del sistema o realiza un cambio de contexto, permanece en `KERNEL`. |
-| **`SchedulingPolicyType`** | `FCFS`, `RR`, `SRT`, `EDF` | Identifica los 4 algoritmos de planificación soportados por cada computador. Se utiliza en `Computer.setPolicy(...)` y en la serialización JSON para cambiar el planificador en caliente. |
-| **`BlockReason`** | `NONE`, `IO`, `WAITING_MUTEX`, `WAITING_EMPTY_BUFFER`, `WAITING_FULL_BUFFER` | Especifica la causa exacta por la que un proceso pasó al estado `BLOQUEADO` o `BLOQUEADO_SUSPENDIDO`: espera de entrada/salida (`IO`), exclusión mutua (`WAITING_MUTEX`), buffer lleno al intentar producir (`WAITING_FULL_BUFFER`) o buffer vacío al intentar consumir (`WAITING_EMPTY_BUFFER`). |
+| **`ProcessState`** | `NUEVO`, `LISTO`, `EJECUTANDO`, `BLOQUEADO`, `SALIENTE` | Representa los 5 estados del ciclo de vida del proceso: espera de admisión por RAM (`NUEVO`), en cola de listos (`LISTO`), ejecutando en procesador (`EJECUTANDO`), esperando E/S, red o semáforo (`BLOQUEADO`) y finalizado (`SALIENTE`). |
+| **`ProcessType`** | `CPU_BOUND`, `IO_BOUND`, `PRODUCER`, `CONSUMER` | Clasifica la naturaleza del proceso: cálculo intensivo (`CPU_BOUND`), ráfagas periódicas de entrada/salida (`IO_BOUND`), productor de elementos hacia un buffer (`PRODUCER`) o consumidor de elementos (`CONSUMER`). |
+| **`ExecutionMode`** | `USER`, `KERNEL` | Indica el nivel de privilegio actual de la `CPU` y del proceso. Cuando la CPU está libre (`CPU libre · KERNEL`) o ejecuta primitivas de sincronización (`semWait`, `semSignal`, acceso a buffer) opera en modo `KERNEL`; durante instrucciones normales de programa opera en modo `USER`. |
+| **`SchedulingPolicyType`** | `FCFS`, `ROUND_ROBIN`, `EDF`, `PRIORITY_PREEMPTIVE` | Identifica los 4 algoritmos de planificación soportados por cada computador, permitiendo su selección inicial y cambio en caliente durante la simulación. |
+| **`BlockReason`** | `NONE`, `WAITING_MUTEX`, `WAITING_EMPTY_BUFFER`, `WAITING_FULL_BUFFER`, `NETWORK_LATENCY`, `WAITING_IO` | Especifica la causa exacta por la que un proceso permanece en la cola de `BLOQUEADO`: esperando exclusión mutua (`WAITING_MUTEX`), buffer vacío al consumir (`WAITING_EMPTY_BUFFER`), buffer lleno al producir (`WAITING_FULL_BUFFER`), retardo de red remota (`NETWORK_LATENCY`) o ráfaga de E/S (`WAITING_IO`). |
+| **`ProcessControlBlock.SyncPhase`** | `WAIT_SLOT`, `WAIT_MUTEX`, `ACCESS`, `SIGNAL_MUTEX`, `SIGNAL_SLOT`, `WORK` | Modela las 6 etapas atómicas (1 instrucción por ciclo) del protocolo Productor-Consumidor de Stallings dentro del PCB. |
+| **`ProcessControlBlock.BufferPermit`** | `MUTEX`, `VACIOS`, `LLENOS` | Registra los permisos semafóricos adquiridos por un PCB para garantizar su devolución exacta (`cleanupPermits`) incluso si el proceso aborta por vencimiento de *deadline*. |
 
 ---
 
 ## 4. Interfaces Utilizadas
 
-El proyecto emplea interfaces para aplicar polimorfismo, inversión de dependencias y desacoplamiento entre capas:
+El proyecto utiliza interfaces para aplicar polimorfismo (*Strategy* en planificadores y *Observer* en reloj, bitácora y sincronización con la GUI):
 
-| Interfaz | Paquete | Métodos | Propósito y Clases que la Implementan |
+| Interfaz | Ubicación | Métodos | Propósito y Clases que la Implementan |
 | :--- | :--- | :--- | :--- |
-| **`IScheduler`** | `com.avilaos.core.interfaces` | `addProcess(PCB)`<br>`getNextProcess(PCB)`<br>`removeProcess(PCB)`<br>`isReadyQueueEmpty()`<br>`getReadyQueueSize()`<br>`getReadyProcessesSnapshot()`<br>`getPolicyName()` | Define el contrato común para los algoritmos de planificación de corto plazo (Patrón *Strategy*). Implementada por `FCFSScheduler`, `RoundRobinScheduler`, `SRTScheduler` y `EDFScheduler`. Permite cambiar la política de cualquier computador en plena ejecución transfiriendo los procesos listos sin pérdida de estado. |
-| **`IClockTickable`** | `com.avilaos.core.interfaces` | `onTick(long currentTick)` | Define el contrato de suscripción al reloj global del sistema (Patrón *Observer*). Implementada por `SimulationController`, que recibe cada pulso del `ClockGenerator` y coordina el avance síncrono de todos los computadores. |
-| **`ILogListener`** | `com.avilaos.core.interfaces` | `onNewLog(String logEntry)` | Permite notificar en tiempo real a la interfaz gráfica cada vez que ocurre un evento del sistema operativo (cambios de contexto, bloqueos en semáforos, *swapping*, vencimiento de *deadlines*). |
-| **`GuiCommands.Work<T>`** | `com.avilaos.gui` | `T run() throws Exception` | Interfaz funcional que encapsula una operación contra el `SimulationController` para ejecutarla en un hilo trabajador fuera del *Event Dispatch Thread* (EDT) de Swing. |
-| **`GuiCommands.Result<T>`** | `com.avilaos.gui` | `void accept(T value)` | Interfaz funcional de *callback* que recibe en el hilo de eventos de Swing (EDT) el resultado devuelto por `GuiCommands.Work<T>`. |
+| **`IScheduler`** | `com.avilaos.core.scheduler` | `scheduleNext(MyQueue<PCB>, PCB)`<br>`addProcess(PCB)`<br>`removeProcess(PCB)`<br>`getReadyQueue()`<br>`getType()`<br>`onClockTick()` | Contrato común para las políticas de planificación de corto plazo. Implementada por `FcfsScheduler`, `RoundRobinScheduler`, `EdfScheduler` y `PreemptivePriorityScheduler`. |
+| **`IClockTickable`** | `com.avilaos.core.kernel` | `tick(int currentCycle)` | Contrato para todos los componentes reactivos al pulso del reloj global (`SimulationController`, `CPU` y `DMA`). |
+| **`SimulationController.ILogListener`** | `com.avilaos.simulation` | `onLogAdded(String message)` | Observador propio para notificar en lotes seguros al panel de bitácora de `MonitorSimulacion` cada evento del sistema operativo. |
+| **`ComputerKernel.IEventListener`**<br>**`ProducerConsumerDriver.IEventListener`** | `com.avilaos.core.kernel`<br>`com.avilaos.sync` | `accept(String message)` | Interfaces funcionales propias (sin depender de `java.util.function`) para emitir eventos desde el kernel y el driver de sincronización hacia el controlador. |
+| **`GuiCommands.Work<T>`**<br>**`GuiCommands.Result<T>`** | `com.avilaos.concurrency` | `T run() throws Exception`<br>`void accept(T value)` | Interfaces funcionales para encolar tareas del modelo en el hilo trabajador `AvilaOS-Commands` y entregar el resultado en el *Event Dispatch Thread* (EDT) de Swing. |
 
 ---
 
@@ -127,153 +128,118 @@ El proyecto emplea interfaces para aplicar polimorfismo, inversión de dependenc
 
 ### 5.1 Estructuras de Datos Propias (`com.avilaos.core.structures`)
 
-Para cumplir con la restricción de diseño de no utilizar colecciones de `java.util`, todas las colas de planificación, tablas de memoria y listas de dispositivos se construyeron sobre las siguientes clases genéricas:
+Construidas desde cero mediante nodos enlazados simples sin emplear ninguna clase de `java.util`:
 
-- **`Node<T>`**
-  - Nodo básico de enlace simple con atributo `value` (`T`) y puntero `next` (`Node<T>`).
-- **`SimpleList<T>`**
-  - Lista simplemente enlazada genérica con punteros `pFirst`, `pLast` y contador `size`.
-  - **Métodos clave:**
-    - `insertEnd(T value)` / `insertBegin(T value)`: Inserción en $O(1)$ al final o al inicio de la lista.
-    - `get(int index)`: Acceso posicional validado.
-    - `delete(T value)` / `deletePos(int index)`: Eliminación por referencia (`equals`) o por índice, actualizando `pFirst` y `pLast`.
-    - `contains(T value)`: Búsqueda lineal para verificar pertenencia.
-- **`Queue<T>`**
-  - Cola FIFO pura implementada con punteros `front` y `rear`.
-  - **Métodos clave:**
-    - `enqueue(T value)`: Encola un elemento al final (`rear`) en $O(1)$.
-    - `dequeue()`: Desencola y retorna el elemento frontal (`front`) en $O(1)$.
-    - `peek()`: Consulta el frente de la cola sin extraerlo.
+- **`Node<T>`**: Nodo genérico autorreferenciado con atributo `data` (`T`) y enlace `pNext` (`Node<T>`).
+- **`MyLinkedList<T>`**: Lista simplemente enlazada genérica con punteros `pFirst`, `pLast` y tamaño `size`.
+  - **Clases internas propias:** `MyComparator<E>` (clase abstracta comparadora) y `MyLinkedListIterator` (iterador propio).
+  - **Métodos clave:** `append(T)`, `insertFirst(T)`, `insertPos(int, T)`, `deleteFirst()`, `deleteLast()`, `deletePos(int)`, `remove(T)`, `get(int)`, `contains(T)` y `sort(MyComparator<T>)` (ordenamiento por inserción in-situ sobre nodos enlazados).
+- **`MyQueue<T>`**: Cola genérica FIFO con punteros `pFirst` y `pLast`.
+  - **Métodos clave:** `enqueue(T)` / `queue(T)`, `dequeue()`, `peek()`, `removeElement(T)` y `toArray()`.
+- **`MyStack<T>`**: Pila genérica LIFO con puntero `pTop`.
+  - **Métodos clave:** `push(T)`, `pop()` y `peek()`.
 
 ---
 
 ### 5.2 Modelo del Proceso (`com.avilaos.core.model`)
 
 - **`ProcessControlBlock`**
-  - Representa la estructura unificada **PCB/TCB (1:1)** de cada proceso en el sistema.
-  - **Atributos principales:** `pid`, `name`, `state` (`ProcessState`), `type` (`ProcessType`), `totalInstructions`, `executedInstructions`, `programCounter` (`PC`), `memoryAddressRegister` (`MAR`), `priority`, `deadline`, `remainingDeadline`, `ioExceptionCycle`, `ioDuration`, `currentIoWait`, `waitingTime`, `targetBufferId`, `blockReason`, `pendingItem`.
+  - Representa la estructura unificada **PCB/TCB** de cada proceso en el clúster.
   - **Métodos más importantes:**
-    - `executeCycle()`: Avanza la ejecución del proceso en 1 instrucción: incrementa `executedInstructions`, `programCounter` (`PC`) y `memoryAddressRegister` (`MAR`).
-    - `decrementDeadline()`: Reduce en 1 ciclo el `remainingDeadline` si el proceso aún no ha terminado, permitiendo detectar incumplimientos de tiempo real.
-    - `incrementWaitingTime()`: Incrementa el acumulador `waitingTime` en cada ciclo que el proceso permanece en espera (`LISTO` o `BLOQUEADO`).
-    - `shouldTriggerIO()`: Verifica si el número de instrucciones ejecutadas alcanzó el ciclo configurado (`ioExceptionCycle`) para disparar una interrupción de E/S.
-    - `advanceIoWait()` y `isIoCompleted()`: Controlan el temporizador de bloqueo por E/S hasta que el dispositivo completa la operación.
-    - `hasFinishedInstructions()`: Determina si `executedInstructions >= totalInstructions`.
-    - `resetIdGenerator(int nextValue)`: Reinicia la secuencia estática de `PID` al limpiar o cargar una nueva simulación.
+    - `allocateId()` y `resetIdGenerator(int initialValue)`: Generación segura de identificadores únicos protegida por un `Semaphore` binario justo.
+    - `executeOneCycle(int currentCycle)`: Si el proceso está en `EJECUTANDO`, registra `startCycle` en su primer despacho, incrementa linealmente `programCounter++` (`PC`) y `memoryAddressRegister++` (`MAR`), decrementa `remainingTime--` y transiciona a `SALIENTE` al llegar a 0.
+    - `updateDeadlineOnTick(int currentCycle)`: Decrementa `remainingDeadline--` en cada ciclo para todo proceso activo (`LISTO`, `EJECUTANDO`, `BLOQUEADO`) y lo marca como `SALIENTE` si vence el plazo (`<= 0`).
+    - `incrementWaitingTime()`: Acumula los ciclos que el proceso pasa esperando en `LISTO` o `BLOQUEADO` sin ejecutar en CPU.
+    - `grantBufferPermit(...)`, `recordBufferOperation(...)`, `recordBufferSignal(...)` y `clearBufferPermits()`: Contabilidad estricta de permisos semafóricos (`MUTEX`, `VACIOS`, `LLENOS`) para garantizar conservación de recursos ante desalojos de Round Robin o abortos por *deadline*.
 
 ---
 
 ### 5.3 Algoritmos de Planificación (`com.avilaos.core.scheduler`)
 
-Todas las clases de este paquete implementan la interfaz `IScheduler`:
+Todas las políticas implementan `IScheduler`:
 
-- **`FCFSScheduler` (*First-Come, First-Served*)**
-  - Utiliza una `Queue<ProcessControlBlock>` estrictamente FIFO y no expropiativa.
-  - `getNextProcess(currentProcess)`: Si hay un proceso en `EJECUCION`, lo mantiene en CPU hasta que termine o se bloquee; si la CPU está libre, desencola el primero de la cola de listos.
-- **`RoundRobinScheduler` (*Round Robin con Quantum configurable*)**
-  - Utiliza una `Queue<ProcessControlBlock>` circular y lleva el conteo de ticks consumidos en `currentQuantumTicks`.
-  - `getNextProcess(currentProcess)`: Incrementa `currentQuantumTicks` en cada ciclo. Cuando `currentQuantumTicks >= quantum`, expropia al proceso actual, lo reencola al final de `readyQueue` en estado `LISTO`, reinicia el contador de quantum y despacha al siguiente proceso de la cola.
-  - `setQuantum(int quantum)`: Permite ajustar dinámicamente el tamaño del quantum desde la interfaz gráfica.
-- **`SRTScheduler` (*Shortest Remaining Time*)**
-  - Política expropiativa basada en la ráfaga restante (`getRemainingInstructions()`).
-  - `getNextProcess(currentProcess)`: Evalúa todos los procesos en `readyList` buscando el de menor número de instrucciones restantes (desempatando por prioridad y luego por `PID`). Si el mejor candidato tiene estrictamente menos instrucciones restantes que el proceso en CPU, realiza expropiación inmediata (*preemption*).
-- **`EDFScheduler` (*Earliest Deadline First*)**
-  - Política de tiempo real expropiativa orientada al cumplimiento de plazos (`remainingDeadline`).
-  - `getNextProcess(currentProcess)`: Selecciona el proceso con menor `remainingDeadline` (mayor urgencia temporal). Si un proceso recién llegado a la cola de listos tiene un *deadline* más cercano que el proceso en ejecución, expropia la CPU inmediatamente para minimizar fallos de tiempo real.
+- **`FcfsScheduler` (*First-Come, First-Served*)**:
+  - Política FIFO no apropiativa. Si `currentRunning` sigue en `EJECUTANDO`, conserva la CPU; si queda libre, desencola el frente de la cola de listos.
+- **`RoundRobinScheduler` (*Round Robin con Quantum configurable*)**:
+  - Política circular apropiativa por tiempo (`quantum` configurable por computador y modificable en caliente mediante `setQuantum(int)`).
+  - En cada `onClockTick()` reduce `currentQuantumRemaining`. Cuando llega a `0`, `scheduleNext(...)` devuelve el proceso actual a `LISTO` al final de la cola, despacha al siguiente y reinicia `currentQuantumRemaining = quantum`.
+- **`EdfScheduler` (*Earliest Deadline First*)**:
+  - Política de tiempo real apropiativa que ordena la cola de listos de menor a mayor `remainingDeadline` (desempatando por menor `id`) mediante `sortQueue(targetQueue)` antes de decidir. Si el frente de la cola tiene un *deadline* estrictamente menor que `currentRunning`, desaloja la CPU de inmediato.
+- **`PreemptivePriorityScheduler` (*Prioridades Apropiativas*)**:
+  - Ordena la cola de listos por prioridad (mayor número = mayor prioridad, desempatando por orden FIFO de `id`) mediante `sortQueue(targetQueue)`. Si en la cola hay un proceso con prioridad estrictamente superior al que está en `EJECUTANDO`, produce apropiación inmediata de la CPU.
 
 ---
 
-### 5.4 Sincronización y Buffers Compartidos (`com.avilaos.sync`)
+### 5.4 Sincronización, Red y Buffers Compartidos (`com.avilaos.sync`)
 
-- **`ManualSemaphore`**
-  - Implementa desde cero un **semáforo general y binario de Stallings** sin utilizar primitivas de bloqueo de Java para los procesos simulados. Posee un contador entero `count` y su propia cola FIFO de procesos bloqueados (`Queue<ProcessControlBlock> waitQueue`).
-  - **Métodos más importantes:**
-    - `waitSem(ProcessControlBlock process, BlockReason reason)`: Decrementa `count`. Si `count < 0`, cambia el estado del proceso a `BLOQUEADO`, registra el `BlockReason` correspondiente (`WAITING_MUTEX`, `WAITING_EMPTY_BUFFER` o `WAITING_FULL_BUFFER`), lo encola en `waitQueue` y retorna `false` para indicar al kernel que debe retirar el proceso de la CPU.
-    - `signalSem()`: Incrementa `count`. Si `count <= 0`, desencola el primer proceso esperando en `waitQueue`, limpia su `BlockReason` a `NONE` y lo retorna al kernel para que sea reactivado (`LISTO` o `LISTO_SUSPENDIDO`).
-- **`SharedBuffer`**
-  - Modela un canal o buffer circular acotado compartido en la red entre múltiples computadores productores y consumidores.
-  - Contiene un arreglo circular `String[] buffer` de capacidad fija (`capacity`) y **tres instancias de `ManualSemaphore`**:
-    1. `mutex` (inicializado en `1`): Garantiza exclusión mutua al manipular los punteros `in`, `out` y `currentSize`.
-    2. `emptySlots` (inicializado en `capacity`): Cuenta los espacios libres disponibles para productores.
-    3. `fullSlots` (inicializado en `0`): Cuenta los ítems disponibles para consumidores.
-  - **Métodos más importantes:**
-    - `insertItem(String item)`: Inserta un dato en la posición `in`, avanza circularmente `(in + 1) % capacity` e incrementa el contador histórico `producedTotal`.
-    - `removeItem()`: Extrae el dato en la posición `out`, avanza circularmente `(out + 1) % capacity` e incrementa `consumedTotal`.
-    - `getBufferContentSnapshot()`: Devuelve una copia segura del estado actual de cada celda del buffer para su visualización en tiempo real en la GUI.
+- **`Buffer`**:
+  - Representa un buffer acotado alojado en la RAM de un computador anfitrión (`idComp`) con capacidad `storage`, cola FIFO de datos (`MyQueue<Integer> datos`), contadores `produced` y `comsumed`, latencia configurable (`latency`) y los **3 semáforos de Stallings**: `mutex` (`1`), `llenos` (`0`) y `vacios` (`storage`), cada uno acompañado de su propia cola de PCBs bloqueados (`waitMutex`, `waitLlenos`, `waitVacios`).
+  - **Métodos clave:** `semWait(PCB, SemaphoreKind)`, `semSignal(PCB, SemaphoreKind)`, `produce(int)`, `consume()`, `cleanupPermits(PCB)` y `getTheoreticalValue(SemaphoreKind)`.
+- **`ProducerConsumerDriver`**:
+  - Ejecuta paso a paso (1 instrucción por ciclo) el protocolo clásico de Stallings en 6 fases (`SyncPhase`):
+    - **Productor:** `WORK` (`cyclesPerOperation` ciclos en modo `USER`) $\rightarrow$ latencia de red si es remoto $\rightarrow$ `WAIT_SLOT` (`semWait(VACIOS)`) $\rightarrow$ `WAIT_MUTEX` (`semWait(MUTEX)`) $\rightarrow$ `ACCESS` (`produce`) $\rightarrow$ `SIGNAL_MUTEX` (`semSignal(MUTEX)`) $\rightarrow$ `SIGNAL_SLOT` (`semSignal(LLENOS)`).
+    - **Consumidor:** latencia de red si es remoto $\rightarrow$ `WAIT_SLOT` (`semWait(LLENOS)`) $\rightarrow$ `WAIT_MUTEX` (`semWait(MUTEX)`) $\rightarrow$ `ACCESS` (`consume`) $\rightarrow$ `SIGNAL_MUTEX` (`semSignal(MUTEX)`) $\rightarrow$ `SIGNAL_SLOT` (`semSignal(VACIOS)`) $\rightarrow$ `WORK` (`cyclesPerOperation` ciclos en modo `USER`).
+- **`NetworkSimulator`**:
+  - Gestiona el retardo de red cuando `pcb.getComputerId() != buffer.getIdComp()`. Bloquea al proceso con motivo `BlockReason.NETWORK_LATENCY` durante `latency` ciclos y avanza el contador en cada tick mediante `stepDelay(pcb)`.
 
 ---
 
-### 5.5 Memoria Principal y Swapping (`com.avilaos.memory`)
+### 5.5 Memoria Principal RAM (`com.avilaos.memory` y `com.avilaos.hardware`)
 
-- **`MemoryManager`**
-  - Gestiona la memoria principal (`ramList`) de tamaño máximo `maxRamCapacity` (medida en cantidad de PCBs residentes) y la memoria secundaria de intercambio (`swapList`).
-  - **Métodos más importantes:**
-    - `admitNewProcess(ProcessControlBlock process)`: Planificador de Largo Plazo. Si `hasSpaceInRam()` es verdadero, carga el proceso en `ramList` y lo pasa a `LISTO`; si la RAM está llena, lo envía a `swapList` en estado `LISTO_SUSPENDIDO`.
-    - `swapOut(ProcessControlBlock process)`: Planificador de Mediano Plazo. Retira un proceso de `ramList`, lo traslada a `swapList` y actualiza su estado de `BLOQUEADO` a `BLOQUEADO_SUSPENDIDO` (o de `LISTO` a `LISTO_SUSPENDIDO`), liberando un marco de RAM.
-    - `swapIn(ProcessControlBlock process)`: Trae un proceso desde `swapList` hacia `ramList` cuando se libera espacio en RAM, cambiando su estado de `LISTO_SUSPENDIDO` a `LISTO` (o de `BLOQUEADO_SUSPENDIDO` a `BLOQUEADO`).
+- **`RAM`** y **`MemoryManager`**:
+  - Gestionan la capacidad total (`totalSize`) y la memoria ocupada (`usedSize`) de cada computador bajo la regla canónica **$1 \text{ instrucción} = 1 \text{ posición de RAM}$** (y $1 \text{ elemento de capacidad} = 1 \text{ posición de RAM}$ para los buffers).
+  - **Métodos clave:** `hasAvailableMemory(int)`, `allocateMemory(int)`, `freeMemory(int)`, `getFreeMemory()` y `getUsagePercentage()`.
 
 ---
 
-### 5.6 Hardware y Kernel del Nodo (`com.avilaos.hardware` y `com.avilaos.core.kernel`)
+### 5.6 Hardware, Reloj Global y Kernel del Nodo (`com.avilaos.hardware` y `com.avilaos.core.kernel`)
 
-- **`CPU`**
-  - Simula el procesador físico de un computador, manteniendo los registros internos `PC`, `MAR`, el modo de ejecución (`ExecutionMode.USER` o `ExecutionMode.KERNEL`) y la referencia al `PCB` en ejecución.
+- **`CPU`** y **`DMA`**:
+  - Implementan `IClockTickable`. `CPU` mantiene los registros `PC`, `MAR`, `ExecutionMode` (`USER` cuando ejecuta un proceso de usuario; `KERNEL` cuando la CPU está libre o ejecuta una instrucción de sistema) y la referencia al `PCB` activo.
+- **`Computer`**:
+  - Agrupa `CPU`, `RAM`, `DMA`, `MemoryManager`, `ComputerKernel`, política activa (`politica`), `quantum` y los contadores de métricas de rendimiento (`ciclosActivos`, `ciclosObservados`, `procesosFinalizados`, `procesosCompletados`, `totalTiempoRespuesta`, `totalTiempoEspera`, `deadlinesCumplidos`).
+  - Al invocarse `setPolitica(SchedulingPolicyType)`, notifica inmediatamente a `kernel.onPolicyChanged(this)` para actualizar el planificador y reordenar en el acto la cola de listos.
+- **`ComputerKernel`**:
+  - Núcleo independiente de cada computador. Administra las 4 colas de estado (`newQueue`, `readyQueue`, `blockedQueue`, `endedQueue`) y la lista general `processList`.
   - **Métodos más importantes:**
-    - `tick()`: Si hay un proceso asignado, conmuta a `ExecutionMode.USER`, invoca `PCB.executeCycle()` y sincroniza los registros `PC` y `MAR` del procesador con los del proceso. Si no hay proceso asignado (`PCB == null`), mantiene la CPU en `ExecutionMode.KERNEL`.
-    - `setPCB(ProcessControlBlock pcb)`: Realiza el cambio de contexto en los registros del hardware; cuando recibe `null`, restablece el modo a `ExecutionMode.KERNEL`.
-- **`Computer`**
-  - Ensambla los componentes de un nodo de la red (`CPU`, `MemoryManager`, `ComputerKernel`) y lleva las estadísticas acumuladas de rendimiento del nodo (`totalCiclos`, `ciclosOcupados`, `procesosTerminados`, `deadlinesCumplidos`, `deadlinesFallidos`, `totalTiempoEspera`).
-  - **Métodos más importantes:**
-    - `addProcess(ProcessControlBlock p)`: Registra el proceso en la tabla maestra del nodo (`allProcesses`) y delega su admisión al `ComputerKernel`.
-    - `setPolicy(SchedulingPolicyType policyType, int quantum)`: Instancia el nuevo `IScheduler` seleccionado y transfiere en caliente todos los procesos de la cola de listos anterior al nuevo planificador.
-    - `registrarCiclo(boolean ocupado)` y `registrarTerminacion(boolean cumplioDeadline, int waitingTime)`: Actualizan los contadores estadísticos para el cálculo de métricas.
-- **`ComputerKernel`**
-  - Es el corazón operativo de cada computador. Coordina la planificación de corto, mediano y largo plazo, la atención de interrupciones de E/S y el protocolo de sincronización distribuida Productor-Consumidor con latencia de red.
-  - **Métodos más importantes:**
-    - `tickStep()`: Ejecuta un ciclo completo del sistema operativo en 6 fases ordenadas:
-      1. Decrementa los *deadlines* de todos los procesos activos e incrementa el `waitingTime` de los procesos en `LISTO` o `BLOQUEADO`.
-      2. Avanza los temporizadores de procesos bloqueados por E/S (`handleBlockedQueue`) y de mensajes en tránsito por la red (`handleNetworkTransit`).
-      3. Ejecuta el ciclo de instrucción en la `CPU` si hay un proceso activo.
-      4. Verifica si el proceso en `CPU` disparó una interrupción de E/S (`shouldTriggerIO`) o si completó sus instrucciones (`hasFinishedInstructions`), iniciando las operaciones de red/semáforos si es `PRODUCER` o `CONSUMER`.
-      5. Ejecuta el Planificador de Mediano Plazo (`performSwappingCheck`): si hay procesos en `LISTO_SUSPENDIDO` y la RAM está llena pero existen procesos bloqueados en RAM, aplica `swapOut` al proceso bloqueado para hacer `swapIn` del proceso listo.
-      6. Invoca al Planificador de Corto Plazo (`scheduler.getNextProcess(...)`) para despachar o expropiar el proceso en la `CPU`.
-    - `initiateNetworkOperation(PCB)` y `executeBufferSemaphoreLogic(PCB)`: Simulan la latencia de red (`networkLatency`) antes de acceder a un `SharedBuffer` remoto y ejecutan la secuencia clásica de semáforos de Stallings:
-      - **Productor:** `emptySlots.waitSem()` $\rightarrow$ `mutex.waitSem()` $\rightarrow$ `insertItem()` $\rightarrow$ `mutex.signalSem()` $\rightarrow$ `fullSlots.signalSem()`.
-      - **Consumidor:** `fullSlots.waitSem()` $\rightarrow$ `mutex.waitSem()` $\rightarrow$ `removeItem()` $\rightarrow$ `mutex.signalSem()` $\rightarrow$ `emptySlots.signalSem()`.
-    - `wakeUpProcess(ProcessControlBlock awakened)`: Cuando un `signalSem()` despierta a un proceso (incluso si pertenece a otro computador de la red), este método localiza el nodo dueño del proceso y lo transiciona a `LISTO` (encolándolo en su `IScheduler`) o a `LISTO_SUSPENDIDO` si había sido enviado a Swap.
+    - `admitProcess(Computer, PCB)` y `evaluateNewQueueAdmission(Computer)`: Planificador de largo plazo en orden FIFO estricto según disponibilidad de RAM; mantiene ordenada `readyQueue` según la política activa.
+    - `onPolicyChanged(Computer)` y `reorderReadyQueue(SchedulingPolicyType, boolean)`: Reordenan de inmediato `readyQueue` al cambiar la política de planificación (`EDF`, `PRIORITY_PREEMPTIVE`, `FCFS` o `ROUND_ROBIN`) o al admitir/despertar procesos.
+    - `dispatch(Computer, PCB)`: Invoca `scheduler.scheduleNext(this.readyQueue, currentRunning)`, realiza el cambio de contexto guardando `PC` y `MAR` si hubo desalojo y carga el siguiente proceso en la `CPU`.
+    - `executeCycle(Computer, int, ProducerConsumerDriver, MyLinkedList<Buffer>)`: Ejecuta un ciclo completo del computador (notificación al scheduler, verificación de *deadlines* con limpieza de recursos `cleanupProcessResources`, avance de bloqueos de red e I/O, transferencia de procesos despertados `flushWokenProcesses`, despacho a CPU, ejecución de 1 ciclo de instrucción y acumulación de `waitingTime` para los procesos que no ejecutaron en ese ciclo).
+    - `terminateProcess(Computer, PCB)`: Registra métricas, libera la RAM asignada de forma idempotente, desocupa la CPU si estaba corriendo y dispara `evaluateNewQueueAdmission(com)`.
+- **`GlobalClock`**:
+  - Hilo demonio (`AvilaOS-GlobalClock`) que orquesta los pulsos de tiempo de todo el clúster. Sincroniza el avance mediante `StateAccess` y `Semaphore.tryAcquire(cycleDurationMs, TimeUnit.MILLISECONDS)`.
 
 ---
 
-### 5.7 Concurrencia, Reloj y Persistencia (`com.avilaos.concurrency` y `com.avilaos.simulation`)
+### 5.7 Concurrencia, Controlador y Snapshots (`com.avilaos.concurrency` y `com.avilaos.simulation`)
 
-- **`ClockGenerator`**
-  - Hilo demonio (`Thread` con `setDaemon(true)`) que genera los pulsos de reloj (`ticks`) de la simulación.
-  - Utiliza un `java.util.concurrent.Semaphore(1)` para proteger la lectura/escritura de su estado (`paused`, `intervalMs`, `currentTick`) y notifica en cada ciclo a todos los suscriptores `IClockTickable`.
-- **`StateAccess`**
-  - Monitor global basado en un `Semaphore(1, true)` justo (*fair*) con soporte de reentrancia por hilo (`owner` y `depth`). Garantiza exclusión mutua estricta entre el hilo del reloj (`ClockGenerator`) y los hilos trabajadores de la interfaz gráfica (`GuiCommands`) al leer o modificar el estado de la simulación.
-- **`SimulationController`**
-  - Controlador central que administra la lista de computadores (`SimpleList<Computer>`), la lista de buffers compartidos (`SimpleList<SharedBuffer>`), el `ClockGenerator` y la bitácora de eventos (`eventLogs`).
-  - **Métodos más importantes:**
-    - `onTick(long currentTick)`: Recibe el pulso del reloj bajo protección de `StateAccess`, invoca `tickStep()` en cada `Computer`, registra alertas de inanición/*deadlines* y dispara la actualización de la GUI.
-    - `captureSnapshot()`: Construye y retorna un objeto `SimulationSnapshot` inmutable con toda la telemetría del ciclo actual para que Swing repinte sin riesgo de condiciones de carrera.
-    - `loadDefaultSimulation()`, `saveCurrentConfig(String)` y `loadConfigFromFile(String)`: Gestionan la carga del escenario inicial y la persistencia en archivos JSON.
-    - `reset()`: Detiene y reinicia el reloj a 0, vacía computadores y buffers, y restablece el generador de `PID` a 1.
-- **`SimulationConfigManager`**
-  - Parser y serializador JSON recursivo escrito a mano (sin librerías externas ni `java.util`), capaz de exportar e importar la topología completa de computadores, políticas, quantums, latencia de red, buffers y procesos con sus atributos.
+- **`StateAccess`**:
+  - Candado global reentrante construido con `java.util.concurrent.Semaphore(1, true)` justo. Serializa cada tick del reloj con los comandos enviados desde la GUI y, al salir del nivel externo (`depth == 0`), publica automáticamente un `SimulationSnapshot` inmutable.
+- **`GuiCommands`** y **`GuiRequest`**:
+  - Hilo trabajador (`AvilaOS-Commands`) con una cola propia (`MyQueue<Runnable>`) acotada a 128 solicitudes. Garantiza que el hilo de eventos de Swing (EDT) nunca se bloquee esperando al modelo ni realizando E/S de disco.
+- **`SimulationController`**:
+  - Fachada central del simulador (`Singleton`). Gestiona la creación de computadores (`createComputer`), buffers (`createBuffer`), procesos con selección manual o balanceo de carga iniciado por el emisor (`selectSenderInitiatedComputer` / `createProcess`), cambios de política y quantum en caliente (`setComputerPolicy`, `setComputerQuantum`), latencia de red (`setNetworkLatency`, `setBufferLatency`), control del reloj (`startSimulation`, `pauseSimulation`, `stepSimulation`, `reset`) y despacho de bitácora (`logEvent` / `flushLogs`).
+- **`SimulationSnapshot`**:
+  - Estructura inmutable publicada con `volatile` que encapsula copias de valor (`Node`, `CpuView`, `MemoryView`, `KernelView`, `QueueView`, `ProcessView`, `BufferView` e historial de `Sample` / `Usage` de hasta 2000 ciclos) para que Swing renderice las vistas y gráficas sin riesgo de condiciones de carrera.
 
 ---
 
-### 5.8 Interfaz Gráfica y Gráficas de Rendimiento (`com.avilaos.gui`)
+### 5.8 Interfaz Gráfica, Persistencia JSON y Métricas (`com.avilaos.gui`)
 
-- **`VentanaPrincipal`**: Ventana principal con navegación por pestañas (`Simulación`, `Métricas`, `Computadores`, `Buffers`, `Procesos`) y barra de estado inferior sincronizada con el reloj y el estado de ejecución.
-- **`MonitorSimulacion`**: Panel maestro de monitoreo en tiempo real. Muestra las tarjetas de cada computador (`VistaComputador` con estado de `CPU`, modo `USER`/`KERNEL`, registros `PC` y `MAR`, ocupación de `RAM`/`Swap`, colas de `Listos`, `Bloqueados`, `Swap Listo` y `Swap Bloqueado`), el estado casilla por casilla de cada `SharedBuffer`, el control de velocidad del reloj (`ms/ciclo`) y la bitácora de eventos del sistema operativo.
-- **`PanelMetricas`**: Panel de análisis cuantitativo con **JFreeChart**. Incorpora un selector interactivo (`JComboBox`) que permite graficar en tiempo real las **4 métricas exigidas** por computador y a nivel global:
+- **`PanelPrincipal`**: Ventana principal con barra lateral de navegación hacia las 6 vistas (`01 Inicio`, `02 Computadores`, `03 Buffers`, `04 Procesos`, `05 Simulación`, `06 Métricas`) y formularios de creación de computadores y buffers.
+- **`EditorProceso`**: Compositor de programas por bloques de `CPU` y `E/S` y configuración de procesos `PRODUCER`, `CONSUMER` e `IO_BOUND`, calculando automáticamente la memoria RAM derivada ($1 \text{ instrucción} = 1 \text{ posición RAM}$).
+- **`MonitorSimulacion`**: Panel interactivo de monitoreo en tiempo real. Incluye:
+  - Controles de persistencia (`Guardar configuración`, `Cargar configuración`, `Exportar log`, `Reiniciar todo`) y controles del reloj global (`Iniciar`/`Reanudar`, `Pausar`, `+1 tick`, `Intervalo (ms)`).
+  - Tarjetas por computador (`VistaComputador`) con selector de política y *quantum* en caliente, estado de CPU (`CPU libre · KERNEL` / `CPU ocupada · USER/KERNEL`), registros `PC`, `MAR`, prioridad, tiempo restante, *deadline* restante y uso de RAM.
+  - **4 Tablas independientes para las colas del Kernel** (`COLA DE NUEVOS`, `COLA DE LISTOS`, `COLA DE BLOQUEADOS` con su motivo de bloqueo explícito, y `COLA DE TERMINADOS`), las cuales reflejan de inmediato cualquier cambio de ordenamiento al cambiar la política de planificación.
+  - Tabla de estado de **Buffers Globales** (host, latencia, ocupación, capacidad, permisos `Mutex`, `Llenos`, `Vacíos` y cola de procesos bloqueados) con control para modificar la latencia en caliente.
+- **`ValidarCarga`**: Validador estricto previo a la carga de archivos JSON. Verifica tipos, rangos, unicidad de nombres e IDs, capacidad de RAM y ausencia de desbordamientos aritméticos (`Math.multiplyExact` / `Math.addExact` y límites de contadores) antes de sustituir la sesión activa.
+- **`PanelMetricas`**: Panel de visualización con **JFreeChart** y selector interactivo para graficar en tiempo real:
   1. **Utilización de CPU (%)**
   2. **Throughput (procesos/ciclo)**
-  3. **Tasa de éxito de misión / Deadlines (%)**
-  4. **Tiempo promedio de espera (ticks)**
-- **`PanelComputadores`, `PanelBuffers` y `PanelProcesos`**: Formularios CRUD interactivos para agregar/eliminar computadores, cambiar políticas de planificación y quantum en caliente, crear buffers compartidos y generar procesos individuales o ráfagas de 20 procesos aleatorios.
-- **`GuiCommands`**: Despachador asíncrono que ejecuta todas las mutaciones solicitadas por el usuario en hilos trabajadores en segundo plano, evitando congelar el hilo de eventos de Swing (EDT).
+  3. **Tasa de éxito (deadlines) (%)**
+  4. **Tiempo de espera (ticks)**
 
 ---
 
@@ -289,16 +255,15 @@ classDiagram
         <<enumeration>>
         NUEVO
         LISTO
-        EJECUCION
+        EJECUTANDO
         BLOQUEADO
-        TERMINADO
-        LISTO_SUSPENDIDO
-        BLOQUEADO_SUSPENDIDO
+        SALIENTE
     }
 
     class ProcessType {
         <<enumeration>>
-        LOCAL
+        CPU_BOUND
+        IO_BOUND
         PRODUCER
         CONSUMER
     }
@@ -312,105 +277,113 @@ classDiagram
     class SchedulingPolicyType {
         <<enumeration>>
         FCFS
-        RR
-        SRT
+        ROUND_ROBIN
         EDF
+        PRIORITY_PREEMPTIVE
     }
 
     class BlockReason {
         <<enumeration>>
         NONE
-        IO
         WAITING_MUTEX
         WAITING_EMPTY_BUFFER
         WAITING_FULL_BUFFER
+        NETWORK_LATENCY
+        WAITING_IO
     }
 
-    class SimpleList~T~ {
+    class MyLinkedList~T~ {
         -Node~T~ pFirst
         -Node~T~ pLast
         -int size
-        +insertEnd(T value) void
+        +append(T data) void
         +get(int index) T
-        +delete(T value) boolean
-        +deletePos(int index) boolean
-        +getSize() int
+        +deletePos(int pos) void
+        +remove(T data) boolean
+        +sort(MyComparator~T~ comp) void
+        +size() int
     }
 
-    class Queue~T~ {
-        -Node~T~ front
-        -Node~T~ rear
+    class MyQueue~T~ {
+        -Node~T~ pFirst
+        -Node~T~ pLast
         -int size
-        +enqueue(T value) void
+        +enqueue(T item) void
         +dequeue() T
         +peek() T
-        +isEmpty() boolean
+        +removeElement(T data) boolean
+        +toArray() Object[]
     }
 
     class ProcessControlBlock {
-        -int pid
+        -int id
         -String name
+        -int computerId
         -ProcessState state
         -ProcessType type
-        -int totalInstructions
-        -int executedInstructions
-        -int programCounter
-        -int memoryAddressRegister
+        -ExecutionMode mode
+        -BlockReason blockReason
         -int priority
+        -int assignedMemory
+        -int totalInstructions
+        -int remainingTime
         -int deadline
         -int remainingDeadline
         -int waitingTime
-        -int targetBufferId
-        -BlockReason blockReason
-        +executeCycle() void
-        +decrementDeadline() void
+        -int programCounter
+        -int memoryAddressRegister
+        +executeOneCycle(int currentCycle) void
+        +updateDeadlineOnTick(int currentCycle) void
         +incrementWaitingTime() void
-        +shouldTriggerIO() boolean
-        +hasFinishedInstructions() boolean
+        +grantBufferPermit(int bufferId, BufferPermit permit) void
+        +recordBufferOperation(int bufferId) void
+        +recordBufferSignal(int bufferId, BufferPermit permit) void
     }
 
     class IScheduler {
         <<interface>>
-        +addProcess(ProcessControlBlock p) void
-        +getNextProcess(ProcessControlBlock current) ProcessControlBlock
-        +removeProcess(ProcessControlBlock p) boolean
-        +getReadyQueueSize() int
-        +getPolicyName() String
+        +scheduleNext(MyQueue~ProcessControlBlock~ queue, ProcessControlBlock currentRunning) ProcessControlBlock
+        +addProcess(ProcessControlBlock process) void
+        +removeProcess(ProcessControlBlock process) void
+        +getReadyQueue() MyQueue~ProcessControlBlock~
+        +getType() SchedulingPolicyType
+        +onClockTick() void
     }
 
-    class FCFSScheduler {
-        -Queue~ProcessControlBlock~ readyQueue
-    }
+    class FcfsScheduler
     class RoundRobinScheduler {
-        -Queue~ProcessControlBlock~ readyQueue
         -int quantum
-        -int currentQuantumTicks
+        -int currentQuantumRemaining
+        +setQuantum(int quantum) void
     }
-    class SRTScheduler {
-        -SimpleList~ProcessControlBlock~ readyList
+    class EdfScheduler {
+        +sortReadyQueue(MyQueue~ProcessControlBlock~ queue) void
     }
-    class EDFScheduler {
-        -SimpleList~ProcessControlBlock~ readyList
-    }
-
-    class ManualSemaphore {
-        -int count
-        -Queue~ProcessControlBlock~ waitQueue
-        +waitSem(ProcessControlBlock p, BlockReason r) boolean
-        +signalSem() ProcessControlBlock
+    class PreemptivePriorityScheduler {
+        +sortReadyQueue(MyQueue~ProcessControlBlock~ queue) void
     }
 
-    class SharedBuffer {
+    class Buffer {
         -int id
-        -String name
-        -String[] buffer
-        -int capacity
-        -int currentSize
-        -ManualSemaphore mutex
-        -ManualSemaphore emptySlots
-        -ManualSemaphore fullSlots
-        +insertItem(String item) void
-        +removeItem() String
+        -int idComp
+        -int storage
+        -int latency
+        -MyQueue~Integer~ datos
+        -Semaphore mutex
+        -Semaphore llenos
+        -Semaphore vacios
+        +semWait(ProcessControlBlock pcb, SemaphoreKind kind) boolean
+        +semSignal(ProcessControlBlock pcb, SemaphoreKind kind) void
+        +produce(int item) void
+        +consume() Integer
+        +cleanupPermits(ProcessControlBlock pcb) void
+    }
+
+    class ProducerConsumerDriver {
+        -NetworkSimulator networkSimulator
+        +executeCycle(ProcessControlBlock pcb, Buffer buffer) boolean
+        +stepNetworkDelay(ProcessControlBlock pcb) boolean
+        +wakeUpProcess(ProcessControlBlock pcb)$ void
     }
 
     class CPU {
@@ -418,90 +391,97 @@ classDiagram
         -int MAR
         -ExecutionMode mode
         -ProcessControlBlock PCB
-        +tick() void
-        +setPCB(ProcessControlBlock pcb) void
+        +tick(int currentCycle) void
+        +setPCB(ProcessControlBlock PCB) void
     }
 
     class MemoryManager {
-        -int maxRamCapacity
-        -SimpleList~ProcessControlBlock~ ramList
-        -SimpleList~ProcessControlBlock~ swapList
-        +admitNewProcess(ProcessControlBlock p) void
-        +swapIn(ProcessControlBlock p) void
-        +swapOut(ProcessControlBlock p) void
+        -RAM ram
+        +hasAvailableMemory(int required) boolean
+        +allocateMemory(int amount) boolean
+        +freeMemory(int amount) void
     }
 
     class ComputerKernel {
-        -CPU cpu
-        -MemoryManager memoryManager
-        -IScheduler scheduler
-        -SimpleList~ProcessControlBlock~ blockedQueue
-        -SimpleList~SharedBuffer~ networkBuffers
-        +tickStep() void
-        +admitProcess(ProcessControlBlock p) void
-        -performSwappingCheck() void
-        -executeBufferSemaphoreLogic(ProcessControlBlock p) void
+        -MyLinkedList~ProcessControlBlock~ processList
+        -MyQueue~ProcessControlBlock~ newQueue
+        -MyQueue~ProcessControlBlock~ readyQueue
+        -MyQueue~ProcessControlBlock~ blockedQueue
+        -MyQueue~ProcessControlBlock~ endedQueue
+        -IScheduler activeScheduler
+        +admitProcess(Computer com, ProcessControlBlock p) boolean
+        +evaluateNewQueueAdmission(Computer com) int
+        +onPolicyChanged(Computer com) void
+        +reorderReadyQueue(SchedulingPolicyType policy, boolean restoreFifo) void
+        +dispatch(Computer com, ProcessControlBlock p) void
+        +executeCycle(Computer comp, int currentCycle, ProducerConsumerDriver syncDriver, MyLinkedList~Buffer~ buffers) void
+        +terminateProcess(Computer com, ProcessControlBlock p) void
     }
 
     class Computer {
         -int id
+        -String name
         -CPU cpu
-        -MemoryManager memory
+        -RAM ram
         -ComputerKernel kernel
-        -SchedulingPolicyType policyType
+        -MemoryManager memoryManager
+        -SchedulingPolicyType politica
         -int quantum
-        -long totalCiclos
-        -long ciclosOcupados
-        -int procesosTerminados
-        -int deadlinesCumplidos
-        -long totalTiempoEspera
-        +addProcess(ProcessControlBlock p) void
-        +setPolicy(SchedulingPolicyType policy, int quantum) void
+        +setPolitica(SchedulingPolicyType politica) void
+        +setQuantum(int quantum) void
+        +registrarTerminacion(ProcessControlBlock pcb, int cicloActual) void
     }
 
     class IClockTickable {
         <<interface>>
-        +onTick(long currentTick) void
+        +tick(int currentCycle) void
     }
 
-    class ClockGenerator {
-        -long currentTick
-        -int intervalMs
-        -boolean paused
-        -SimpleList~IClockTickable~ subscribers
-        +run() void
-    }
-
-    class SimulationController {
-        -ClockGenerator clock
-        -SimpleList~Computer~ computers
-        -SimpleList~SharedBuffer~ buffers
-        -int networkLatency
-        +onTick(long currentTick) void
-        +captureSnapshot() SimulationSnapshot
-        +saveCurrentConfig(String filePath) boolean
-        +loadConfigFromFile(String filePath) boolean
+    class GlobalClock {
+        -int cycleCounter
+        -int cycleDurationMs
+        -MyLinkedList~IClockTickable~ subscribers
+        +start() void
+        +pause() void
+        +step() void
         +reset() void
     }
 
-    IScheduler <|.. FCFSScheduler
-    IScheduler <|.. RoundRobinScheduler
-    IScheduler <|.. SRTScheduler
-    IScheduler <|.. EDFScheduler
-    IClockTickable <|.. SimulationController
+    class SimulationController {
+        -MyLinkedList~Computer~ computers
+        -MyLinkedList~Buffer~ buffers
+        -GlobalClock clock
+        -ProducerConsumerDriver syncDriver
+        -SimulationSnapshot snapshot
+        +tick(int currentCycle) void
+        +createComputer(String name, int ramSize, SchedulingPolicyType policy, int quantum) Computer
+        +createProcess(...) ProcessControlBlock
+        +createBuffer(int hostComputerId, int storage, int latency) Buffer
+        +setComputerPolicy(int id, SchedulingPolicyType policy) void
+        +setComputerQuantum(int computerId, int quantum) void
+        +reset() void
+    }
 
-    SimulationController *-- ClockGenerator
+    IScheduler <|.. FcfsScheduler
+    IScheduler <|.. RoundRobinScheduler
+    IScheduler <|.. EdfScheduler
+    IScheduler <|.. PreemptivePriorityScheduler
+    IClockTickable <|.. SimulationController
+    IClockTickable <|.. CPU
+
+    SimulationController *-- GlobalClock
     SimulationController *-- Computer
-    SimulationController *-- SharedBuffer
+    SimulationController *-- Buffer
+    SimulationController *-- ProducerConsumerDriver
     Computer *-- CPU
     Computer *-- MemoryManager
     Computer *-- ComputerKernel
     ComputerKernel --> IScheduler
-    ComputerKernel --> SharedBuffer
-    SharedBuffer *-- ManualSemaphore
-    ManualSemaphore *-- Queue
+    ComputerKernel --> ProducerConsumerDriver
+    ComputerKernel --> Buffer
+    ComputerKernel *-- MyQueue
+    ComputerKernel *-- MyLinkedList
     CPU --> ProcessControlBlock
-    MemoryManager --> ProcessControlBlock
     ProcessControlBlock --> ProcessState
     ProcessControlBlock --> ProcessType
     ProcessControlBlock --> BlockReason
@@ -513,75 +493,71 @@ classDiagram
 
 ### 6.2 Diagrama UML de Secuencia
 
-El siguiente diagrama de secuencia modela un pulso del reloj (`onTick`), la ejecución de instrucciones en `CPU`, la sincronización de un proceso **Productor** sobre un `SharedBuffer` remoto mediante semáforos (`emptySlots`, `mutex`, `fullSlots`), el despertar de un proceso **Consumidor** bloqueado en otro nodo y la actualización asíncrona de la interfaz gráfica mediante `SimulationSnapshot`:
+El siguiente diagrama de secuencia modela un pulso del reloj (`GlobalClock.tickLocked`), la ejecución sincronizada en `ComputerKernel.executeCycle`, el protocolo Productor-Consumidor con latencia de red y semáforos (`Buffer.semWait` / `semSignal`), el despertar de un proceso bloqueado y la publicación inmutable hacia Swing mediante `SimulationSnapshot`:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Clock as ClockGenerator
+    participant Clock as GlobalClock
+    participant SA as StateAccess
     participant Ctrl as SimulationController
-    participant Comp as Computer
     participant Kernel as ComputerKernel
-    participant CPU as CPU
     participant Sched as IScheduler
-    participant Mem as MemoryManager
-    participant Buf as SharedBuffer
-    participant Sem as ManualSemaphore
+    participant CPU as CPU
+    participant Driver as ProducerConsumerDriver
+    participant Net as NetworkSimulator
+    participant Buf as Buffer
     participant GUI as MonitorSimulacion / PanelMetricas
 
-    Clock->>Ctrl: onTick(currentTick)
+    Clock->>SA: enter()
+    Clock->>Ctrl: tick(currentCycle)
     activate Ctrl
-    Note over Ctrl: StateAccess.enter() (Exclusión Mutua)
 
-    loop Por cada Computer en la red
-        Ctrl->>Comp: getKernel().tickStep()
+    loop Por cada Computer en el clúster
+        Ctrl->>Kernel: executeCycle(comp, currentCycle, syncDriver, buffers)
         activate Kernel
 
-        Note over Kernel: 1. Decrementar deadlines e incrementar waitingTime
-        Note over Kernel: 2. Avanzar bloqueados por E/S y tránsito de red
+        Kernel->>Sched: onClockTick()
+        Note over Kernel: checkDeadlines() (vence deadlines <= 0 y libera recursos con cleanupPermits)
+        Kernel->>Driver: stepNetworkDelay(pcb) (avanza NETWORK_LATENCY en bloqueados)
+        Note over Kernel: advanceIOBlocks() y flushWokenProcesses() -> readyQueue (reordenada)
 
-        alt CPU tiene proceso asignado (Modo USER)
-            Kernel->>CPU: tick()
-            CPU->>CPU: PCB.executeCycle() (PC++, MAR++)
-        else CPU libre (Modo KERNEL)
-            CPU->>CPU: mode = ExecutionMode.KERNEL
-        end
-
-        alt Proceso PRODUCER termina instrucciones e inicia acceso a Buffer remoto
-            Kernel->>Buf: getEmptySlots().waitSem(pcb, WAITING_FULL_BUFFER)
-            Buf->>Sem: waitSem(pcb, WAITING_FULL_BUFFER)
-            alt Buffer lleno (count < 0)
-                Sem-->>Kernel: false (PCB pasa a BLOQUEADO en cola del semáforo)
-            else Hay espacio disponible (count >= 0)
-                Sem-->>Kernel: true
-                Kernel->>Buf: getMutex().waitSem(pcb, WAITING_MUTEX)
-                Kernel->>Buf: insertItem("Data_From_PID")
-                Kernel->>Buf: getMutex().signalSem()
-                Kernel->>Buf: getFullSlots().signalSem()
-                Buf->>Sem: signalSem()
-                Sem-->>Kernel: awakenedConsumer (si había un consumidor esperando)
-                opt Había un Consumidor bloqueado
-                    Kernel->>Kernel: wakeUpProcess(awakenedConsumer) -> LISTO / LISTO_SUSPENDIDO
-                end
-                Kernel->>Mem: removeTerminatedProcess(pcb) (Estado TERMINADO)
-                Kernel->>Comp: registrarTerminacion(cumplioDeadline, waitingTime)
-            end
-        end
-
-        Note over Kernel: 5. Planificador de Mediano Plazo (Swapping RAM <-> Swap)
-        Kernel->>Mem: swapOut(blockedProcess) / swapIn(readySuspendedProcess)
-
-        Note over Kernel: 6. Planificador de Corto Plazo (FCFS / RR / SRT / EDF)
-        Kernel->>Sched: getNextProcess(currentInCpu)
+        Kernel->>Sched: scheduleNext(readyQueue, currentRunning)
         Sched-->>Kernel: nextProcess
         Kernel->>CPU: setPCB(nextProcess) (USER si != null, KERNEL si == null)
-        Kernel->>Comp: registrarCiclo(ocupado)
+
+        alt Hay proceso en EJECUTANDO (Productor / Consumidor)
+            Kernel->>Driver: executeCycle(currentRunning, targetBuf)
+            alt Acceso remoto pendiente de red (WAIT_SLOT)
+                Driver->>Net: handleDelay(currentRunning, targetBuf)
+                Net-->>Driver: false (pasa a BLOQUEADO por NETWORK_LATENCY)
+                Driver-->>Kernel: false
+                Kernel->>Kernel: blockProcess(comp, currentRunning) (CPU libre · KERNEL)
+            else Fase de semáforos / acceso (Modo KERNEL)
+                Driver->>Buf: semWait(pcb, VACIOS/LLENOS o MUTEX)
+                alt Permiso disponible
+                    Driver->>Buf: produce(id) / consume()
+                    Driver->>Buf: semSignal(pcb, MUTEX y LLENOS/VACIOS)
+                    Buf->>Driver: wakeUpProcess(waitingPcb) -> estado LISTO
+                    Driver-->>Kernel: true
+                else Sin permiso disponible
+                    Buf-->>Driver: false (encolado en semáforo con WAITING_*)
+                    Driver-->>Kernel: false
+                    Kernel->>Kernel: blockProcess(comp, currentRunning)
+                end
+            end
+            Kernel->>CPU: tick(currentCycle)
+        else CPU libre
+            Note over CPU: Permanece en ExecutionMode.KERNEL
+        end
+
+        Note over Kernel: Incrementar waitingTime en procesos LISTO/BLOQUEADO que no ejecutaron en este ciclo
         deactivate Kernel
     end
 
-    Ctrl->>Ctrl: captureSnapshot()
-    Note over Ctrl: StateAccess.exit()
-    Ctrl-->>GUI: SwingUtilities.invokeLater(actualizar(SimulationSnapshot))
+    Ctrl->>SA: exit()
+    SA->>Ctrl: publishSnapshot() (crea SimulationSnapshot inmutable)
+    Ctrl-->>GUI: SwingUtilities.invokeLater(actualizarVista / actualizarMetricas)
     deactivate Ctrl
 ```
 
@@ -589,23 +565,22 @@ sequenceDiagram
 
 ## 7. Métricas de Rendimiento y Análisis de Políticas de Planificación
 
-En el panel **`02. Métricas`** (`PanelMetricas`), el simulador calcula y grafica en tiempo real cuatro indicadores clave de desempeño tanto por computador individual como para toda la red:
+En las vistas **`05. Simulación` (pestaña Métricas)** y **`06. Métricas`** (`PanelMetricas`), el simulador calcula y grafica en tiempo real cuatro indicadores de desempeño por computador y consolidados para el clúster:
 
 1. **Utilización de CPU (%):**
-   $$\text{Utilización de CPU} = \left( \frac{\text{Ciclos Ocupados}}{\text{Ciclos Totales}} \right) \times 100$$
+   $$\text{Utilización de CPU} = \left( \frac{\text{Ciclos Activos}}{\text{Ciclos Observados}} \right) \times 100$$
 2. **Throughput (procesos/ciclo):**
-   $$\text{Throughput} = \frac{\text{Procesos Terminados}}{\text{Ciclos Totales}}$$
+   $$\text{Throughput} = \frac{\text{Procesos Completados}}{\text{Ciclos Observados}}$$
 3. **Tasa de Éxito de Misión / Cumplimiento de Deadlines (%):**
-   $$\text{Tasa de Éxito} = \left( \frac{\text{Deadlines Cumplidos}}{\text{Deadlines Cumplidos} + \text{Deadlines Fallidos}} \right) \times 100$$
+   $$\text{Tasa de Éxito} = \left( \frac{\text{Deadlines Cumplidos}}{\text{Procesos Finalizados}} \right) \times 100$$
 4. **Tiempo Promedio de Espera (ticks):**
-   $$\text{Espera Promedio} = \frac{\sum \text{Ticks en estado LISTO o BLOQUEADO}}{\text{Procesos Terminados}}$$
+   $$\text{Espera Promedio} = \frac{\sum \text{Ticks en estado LISTO o BLOQUEADO sin ejecutar}}{\text{Procesos Completados}}$$
 
-### Comportamiento Comparativo de los Algoritmos
+### Comportamiento Comparativo de los 4 Algoritmos
 
 | Política | Tipo | Ventaja Principal en la Simulación | Escenario de Degradación |
 | :--- | :--- | :--- | :--- |
-| **FCFS** | No expropiativa | Cero sobrecarga de expropiación; orden predecible de llegada. | Sufre el **efecto convoy**: un proceso largo en CPU retrasa procesos cortos o con *deadlines* urgentes, elevando el tiempo de espera y los fallos de *deadline*. |
-| **Round Robin (RR)** | Expropiativa por tiempo (`Quantum`) | Reparte equitativamente el procesador y mejora el tiempo de respuesta interactivo. | Si el *quantum* es demasiado grande degenera en FCFS; no distingue urgencia de *deadlines*. |
-| **SRT** | Expropiativa por ráfaga restante | Minimiza el **tiempo promedio de espera** y maximiza el **Throughput** al despachar primero los trabajos más cortos. | Puede provocar **inanición (*starvation*)** de procesos largos si ingresan continuamente procesos cortos. |
-| **EDF** | Expropiativa por *deadline* | Maximiza la **Tasa de Éxito de Misión (%)** en cargas de tiempo real al priorizar siempre el proceso cuyo plazo vence más pronto. | Bajo sobrecarga extrema (cuando la demanda supera el 100% de capacidad de CPU), varios procesos cercanos a vencer pueden fallar en cascada (*efecto dominó*). |
-
+| **FCFS (`FcfsScheduler`)** | No apropiativa | Cero sobrecarga de cambio de contexto; orden FIFO predecible. | Sufre el **efecto convoy**: un proceso largo en CPU retrasa procesos cortos o urgentes, elevando el tiempo de espera y los abortos por *deadline*. |
+| **Round Robin (`RoundRobinScheduler`)** | Apropiativa por *Quantum* | Reparte equitativamente la CPU entre todos los procesos listos y mejora el tiempo de respuesta inicial. | Si el *quantum* es muy alto degenera en FCFS; si es muy bajo incrementa los desalojos sin distinguir urgencia de *deadline*. |
+| **EDF (`EdfScheduler`)** | Apropiativa por *Deadline* | Maximiza la **Tasa de Éxito de Misión (%)** en cargas de tiempo real al despachar siempre el proceso cuyo plazo vence más pronto. | Bajo sobrecarga extrema (demanda $> 100\%$ de CPU), procesos cercanos a vencer pueden consumir ciclos y fallar en cascada. |
+| **Prioridades (`PreemptivePriorityScheduler`)** | Apropiativa por Prioridad | Garantiza atención inmediata a procesos críticos de alta prioridad mediante desalojo instantáneo. | Procesos de baja prioridad pueden sufrir **inanición (*starvation*)** e incumplir sus *deadlines* si ingresan continuamente procesos de prioridad alta. |

@@ -131,6 +131,10 @@ public class PreemptivePriorityScheduler implements IScheduler {
         }
     }
 
+    public void sortReadyQueue(MyQueue<ProcessControlBlock> queue) {
+        sortQueue(queue);
+    }
+
     private void sortQueue(MyQueue<ProcessControlBlock> queue) {
         if (queue == null || queue.size() <= 1) {
             return;

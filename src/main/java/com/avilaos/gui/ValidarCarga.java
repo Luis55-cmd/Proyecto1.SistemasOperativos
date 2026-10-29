@@ -39,7 +39,9 @@ final class ValidarCarga {
         JsonElement doc = JsonParser.parseReader(reader);
         if (reader.peek() != JsonToken.END_DOCUMENT) throw error("Contenido adicional después del JSON");
         JsonObject root = objeto(doc);
-        numero(root,"currentCycle",0); numero(root,"cycleDurationMs",1); numero(root,"networkLatency",0);
+        int currentCycle = numero(root,"currentCycle",0);
+        if (currentCycle == Integer.MAX_VALUE) throw error("Ciclo inicial demasiado grande");
+        numero(root,"cycleDurationMs",1); numero(root,"networkLatency",0);
         JsonArray cs=lista(root,"computers"), bs=lista(root,"buffers"), ps=lista(root,"processes");
         if (cs.size() == 0) throw error("Falta al menos un computador");
         int[] ram = new int[cs.size()], usada = new int[cs.size()];
@@ -52,6 +54,7 @@ final class ValidarCarga {
         }
         for (int i=0;i<bs.size();i++) {
             JsonObject b=objeto(bs.get(i)); int id=numero(b,"id",1), host=numero(b,"hostComputerId",1), size=numero(b,"storage",1);
+            if(b.has("latency") && !b.get("latency").isJsonNull()) numero(b,"latency",0);
             if(id!=i+1) throw error("Los IDs de buffers deben ser consecutivos desde 1");
             if(host>ram.length) throw error("Anfitrión de buffer inexistente");
             if ((long)usada[host-1]+size>ram[host-1]) throw error("Los buffers exceden la RAM del computador " + host);
@@ -66,9 +69,13 @@ final class ValidarCarga {
             ProcessState state; ProcessType type;
             try { state=ProcessState.valueOf(texto(p,"state")); type=ProcessType.valueOf(texto(p,"type")); BlockReason.valueOf(texto(p,"blockReason")); }
             catch(IllegalArgumentException e) { throw error("Tipo, estado o bloqueo inválido del proceso " + id); }
-            numero(p,"remainingTime",0); numero(p,"remainingDeadline",0); numero(p,"programCounter",0); numero(p,"memoryAddressRegister",0);
+            int remTime=numero(p,"remainingTime",0); numero(p,"remainingDeadline",0);
+            int pc=numero(p,"programCounter",0); int mar=numero(p,"memoryAddressRegister",0);
             numero(p,"ioInterval",0); numero(p,"ioDuration",0); numero(p,"ioCycleCountdown",0);
-            numero(p,"cyclesPerOperation",0); numero(p,"requiredElements",0); numero(p,"processedElements",0);
+            numero(p,"cyclesPerOperation",0); numero(p,"requiredElements",0); int processed=numero(p,"processedElements",0);
+            if(pc==Integer.MAX_VALUE || mar==Integer.MAX_VALUE || processed==Integer.MAX_VALUE
+                    || (long)pc+remTime>Integer.MAX_VALUE || (long)mar+remTime>Integer.MAX_VALUE)
+                throw error("Contadores del proceso desbordan durante el ciclo: " + id);
             if(state==ProcessState.LISTO || state==ProcessState.EJECUTANDO || state==ProcessState.BLOQUEADO) {
                 if(mem==0 || (long)usada[host-1]+mem>ram[host-1]) throw error("Procesos activos exceden la RAM del computador " + host);
                 usada[host-1]+=mem;
@@ -77,7 +84,14 @@ final class ValidarCarga {
                 String target=texto(p,"targetBufferId");
                 try { int b=Integer.parseInt(target); if(b<1 || b>bs.size()) throw error("Buffer inexistente"); }
                 catch(NumberFormatException e) { throw error("Buffer inválido del proceso " + id); }
-                numero(p,"cyclesPerOperation",1); numero(p,"requiredElements",1);
+                int cycles=numero(p,"cyclesPerOperation",1); int elems=numero(p,"requiredElements",1);
+                try {
+                    int totalSync = Math.multiplyExact(elems, Math.addExact(cycles, 5));
+                    if ((long)pc+totalSync>Integer.MAX_VALUE || (long)mar+totalSync>Integer.MAX_VALUE)
+                        throw error("Registros del proceso desbordan durante el ciclo: " + id);
+                } catch (ArithmeticException ex) {
+                    throw error("Desbordamiento en instrucciones de sincronización del proceso " + id);
+                }
             }
         }
         return new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root);

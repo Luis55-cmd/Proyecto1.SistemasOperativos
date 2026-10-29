@@ -12,7 +12,7 @@ import javax.swing.border.EmptyBorder;
 
 /** Vista Swing: conserva formularios; no modifica el kernel ni ejecuta procesos. */
 public class PanelPrincipal extends JPanel {
-    public enum Destino { MENU, COMPUTADOR, BUFFER, PROCESO, SIMULACION, METRICAS, SIMULACION_NUEVA }
+    public enum Destino { MENU, COMPUTADOR, BUFFER, PROCESO, SIMULACION, METRICAS, SIMULACION_NUEVA, METRICAS_COPIA }
     static final Color FONDO = new Color(246, 243, 234);
     static final Color TINTA = new Color(38, 58, 43);
     static final Color GRIS = new Color(119, 105, 85);
@@ -26,6 +26,7 @@ public class PanelPrincipal extends JPanel {
     private final EditorProceso editorProceso;
     private final MonitorSimulacion monitor;
     private final PanelMetricas metricas;
+    private final PanelMetricasCopia metricasCopia;
     private final SimulationController controller = SimulationController.getInstance();
     
     // Controles de Computador
@@ -68,7 +69,7 @@ public class PanelPrincipal extends JPanel {
         lateral.add(marca);
         lateral.add(Box.createVerticalStrut(28));
         
-        String[] titulos = {"01   Inicio", "02   Computadores", "03   Buffers", "04   Procesos", "05   Simulación", "06   Métricas", "07   Nueva vista"};
+        String[] titulos = {"01   Inicio", "02   Computadores", "03   Buffers", "04   Procesos", "05   Simulación", "06   Métricas", "07   Nueva vista", "08   Métricas copia"};
         for (Destino destino : Destino.values()) {
             JButton boton = accion(titulos[destino.ordinal()], false);
             boton.setHorizontalAlignment(SwingConstants.LEFT);
@@ -102,12 +103,20 @@ public class PanelPrincipal extends JPanel {
         vistaMetricas.add(texto("Métricas del sistema", 26, TINTA, true), BorderLayout.NORTH);
         vistaMetricas.add(metricas, BorderLayout.CENTER);
         pantallas.add(vistaMetricas, Destino.METRICAS.name());
+        metricasCopia = new PanelMetricasCopia(controller);
+        JPanel vistaMetricasCopia = new JPanel(new BorderLayout(0, 16));
+        vistaMetricasCopia.setBackground(FONDO);
+        vistaMetricasCopia.setBorder(new EmptyBorder(24, 24, 24, 24));
+        vistaMetricasCopia.add(texto("Métricas del sistema · copia", 26, TINTA, true), BorderLayout.NORTH);
+        vistaMetricasCopia.add(metricasCopia, BorderLayout.CENTER);
+        pantallas.add(vistaMetricasCopia, Destino.METRICAS_COPIA.name());
         add(pantallas, BorderLayout.CENTER);
         
         // --- CONEXIÓN AL OBSERVER ---
         // Se actualizan las tablas automáticamente cuando el SimulationController cambia
         controller.addGUIListener(() -> {
             metricas.actualizarMetricas();
+            metricasCopia.actualizarMetricas();
             actualizarListaComputadores();
             actualizarListaBuffers();
             actualizarOpcionesComputadoresBuffer();
@@ -120,6 +129,9 @@ public class PanelPrincipal extends JPanel {
         if (destino == null) throw new IllegalArgumentException("Destino de navegación requerido");
         if (destino == Destino.METRICAS) {
             metricas.actualizarMetricas();
+        }
+        if (destino == Destino.METRICAS_COPIA) {
+            metricasCopia.actualizarMetricas();
         }
         if (destino == Destino.PROCESO) editorProceso.actualizarListas();
         if (destino == Destino.SIMULACION) monitor.actualizarVista();

@@ -89,10 +89,23 @@ public final class VistaSimulacionAlternativa extends JPanel {
         JButton guardar = accion("Guardar configuración", false);
         JButton cargar = accion("Cargar configuración", false);
         JButton exportar = accion("Exportar log", false);
+        JButton reiniciar = accion("Reiniciar todo", false);
         guardar.addActionListener(e -> elegirArchivo(true, guardar));
         cargar.addActionListener(e -> elegirArchivo(false, cargar));
         exportar.addActionListener(e -> exportarLog());
-        archivos.add(guardar); archivos.add(cargar); archivos.add(exportar);
+        reiniciar.addActionListener(e -> {
+            reiniciar.setEnabled(false);
+            eventos.setText("");
+            monitor.limpiarLog();
+            GuiCommands.submit(() -> { controller.reset(); return true; }, ok -> {
+                reiniciar.setEnabled(true);
+                actualizar();
+            }, error -> {
+                reiniciar.setEnabled(true);
+                controller.logEvent("Error al reiniciar: " + error.getMessage());
+            });
+        });
+        archivos.add(guardar); archivos.add(cargar); archivos.add(exportar); archivos.add(reiniciar);
         principal.add(archivos);
         JPanel cabecera = new JPanel(new BorderLayout(12, 0));
         cabecera.setOpaque(false);

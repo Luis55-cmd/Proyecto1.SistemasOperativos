@@ -50,9 +50,13 @@ public class VistaSimulacionAlternativaTest {
         SwingUtilities.invokeAndWait(() -> {
             var detalle=((JTextArea) campo("esperaBuffers")).getText();
             check(c.snapshot().buffers.get(0).datos().size()==1 && detalle.contains("Contenido: ["), "No muestra contenido del buffer");
-            c.reset();
+            var reiniciar=(JButton) CreacionComputadoresGuiTest.buscar(vista,JButton.class,"Reiniciar todo");
+            check(reiniciar!=null,"Falta botón de reinicio");
+            reiniciar.doClick();
         });
+        GuiTestDrain.await();
         SwingUtilities.invokeAndWait(() -> {
+            check(c.getCurrentCycle()==0 && c.getComputers().isEmpty(),"El botón no reinició la simulación");
             check(((DefaultTableModel) campo("modeloBuffers")).getRowCount()==0,"Reset no limpió buffers");
             check(((JTabbedPane) campo("vistas")).getTabCount()==1,"Reset no limpió computadores");
         });

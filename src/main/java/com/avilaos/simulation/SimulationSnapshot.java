@@ -42,10 +42,11 @@ public final class SimulationSnapshot {
             int assignedMemory,
             com.avilaos.core.model.BlockReason blockReason,
             String targetBufferId,
-            int ioInterval, int ioDuration, int cyclesPerOperation, int requiredElements
+            int ioInterval, int ioDuration, int cyclesPerOperation, int requiredElements,
+            int readyWaitTicks, int blockedWaitTicks, int semaphoreWaitTicks
     ) {
         public ProcessView(String description, int id, String name, com.avilaos.core.model.ProcessType type, int remainingTime, int memoryAddressRegister, int priority, int remainingDeadline) {
-            this(description, id, name, type, remainingTime, remainingTime, memoryAddressRegister, 0, priority, remainingDeadline, remainingDeadline, 0, com.avilaos.core.model.BlockReason.NONE, null, 0, 0, 0, 0);
+            this(description, id, name, type, remainingTime, remainingTime, memoryAddressRegister, 0, priority, remainingDeadline, remainingDeadline, 0, com.avilaos.core.model.BlockReason.NONE, null, 0, 0, 0, 0, 0, 0, 0);
         }
         public String getDescription() { return description; }
         public int getId() { return id; }
@@ -151,7 +152,8 @@ public final class SimulationSnapshot {
                 mem,
                 p.getBlockReason() != null ? p.getBlockReason() : BlockReason.NONE,
                 p.getTargetBufferId(),
-                p.getIoInterval(), p.getIoDuration(), p.getCyclesPerOperation(), p.getRequiredElements()
+                p.getIoInterval(), p.getIoDuration(), p.getCyclesPerOperation(), p.getRequiredElements(),
+                p.getReadyWaitTicks(), p.getBlockedWaitTicks(), p.getSemaphoreWaitTicks()
         );
     }
 

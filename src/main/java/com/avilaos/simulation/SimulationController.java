@@ -584,6 +584,18 @@ public class SimulationController implements IClockTickable {
         StringBuilder tickReport = new StringBuilder("CPU al finalizar ciclo -> ");
         boolean hayComputadores = false, hayCpuOcupada = false, hayProcesos = false, hayPendientes = false;
 
+        // Muestrear todos los bloqueos antes de ejecutar cualquier computador: un signal remoto
+        // no debe borrar la espera de este ciclo según el orden de los computadores.
+        for (int i = 0; i < computers.size(); i++) {
+            Computer computer = computers.get(i);
+            if (computer == null || computer.getKernel() == null) continue;
+            var processes = computer.getKernel().getProcessList();
+            for (int j = 0; j < processes.size(); j++) {
+                ProcessControlBlock process = processes.get(j);
+                if (process != null) process.sampleBlockedWait(currentCycle);
+            }
+        }
+
         for (int i = 0; i < this.computers.size(); i++) {
             Computer comp = this.computers.get(i);
             if (comp != null && comp.getKernel() != null) {

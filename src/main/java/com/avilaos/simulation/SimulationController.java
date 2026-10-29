@@ -98,6 +98,7 @@ public class SimulationController implements IClockTickable {
         this.logListeners = new MyLinkedList<>();
         this.clock = GlobalClock.getInstance();
         this.syncDriver = new ProducerConsumerDriver(2); // Latencia por defecto: 2 ciclos
+        this.syncDriver.setEventListener(this::logEvent);
         this.clock.addSubscriber(this);
         StateAccess.setPublisher(this::publishSnapshot);
     }

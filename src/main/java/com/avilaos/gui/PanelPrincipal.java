@@ -51,7 +51,7 @@ public class PanelPrincipal extends JPanel {
     private final JTextField memoriaBuffer = new JTextField("10");
     private final JLabel resultadoBuffer = texto("Ningún buffer creado en esta sesión.", 12, GRIS, false);
     private final DefaultTableModel buffersVisibles = new DefaultTableModel(
-            new String[]{"ID Buffer", "ID Comp", "Capacidad (Items)", "Tamaño en RAM", "Latencia (ticks)"}, 0) {
+            new String[]{"ID Buffer", "Host", "Capacidad (Items)", "Tama\u00f1o en RAM", "Latencia (ticks)"}, 0) {
         @Override public boolean isCellEditable(int fila, int columna) { return false; }
     };
 
@@ -348,12 +348,22 @@ public class PanelPrincipal extends JPanel {
         buffersVisibles.setRowCount(0);
         for (int i = 0; i < view.buffers.size(); i++) {
             var b = view.buffers.get(i);
+            String hostInfo = "Host " + b.getIdComp();
+            if (view.computers != null) {
+                for (int c = 0; c < view.computers.size(); c++) {
+                    var comp = view.computers.get(c);
+                    if (comp.getId() == b.getIdComp()) {
+                        hostInfo = comp.getName() + " (" + b.getIdComp() + ")";
+                        break;
+                    }
+                }
+            }
             buffersVisibles.addRow(new Object[]{
-                b.getId(), 
-                b.getIdComp(),       // Computador Host
-                b.getStorage(),      // Capacidad de ítems
-                b.getSizeInMemory(), // TamaÃ±o en RAM
-                b.getLatency()       // Latencia de Red (ticks)
+                b.getId(),
+                hostInfo,
+                b.getStorage(),
+                b.getSizeInMemory(),
+                b.getLatency()
             });
         }
     }

@@ -25,11 +25,39 @@ public final class SimulationSnapshot {
         public int size() { return items.length; }
         @SuppressWarnings("unchecked") public T get(int index) { return (T) items[index]; }
     }
-    public record ProcessView(String description, int id, String name, com.avilaos.core.model.ProcessType type, int remainingTime, int memoryAddressRegister, int priority, int remainingDeadline) {
+    public record ProcessView(
+            String description, 
+            int id, 
+            String name, 
+            com.avilaos.core.model.ProcessType type, 
+            int remainingTime, 
+            int totalInstructions,
+            int memoryAddressRegister, 
+            int programCounter,
+            int priority, 
+            int deadline,
+            int remainingDeadline,
+            int assignedMemory,
+            com.avilaos.core.model.BlockReason blockReason,
+            String targetBufferId
+    ) {
+        public ProcessView(String description, int id, String name, com.avilaos.core.model.ProcessType type, int remainingTime, int memoryAddressRegister, int priority, int remainingDeadline) {
+            this(description, id, name, type, remainingTime, remainingTime, memoryAddressRegister, 0, priority, remainingDeadline, remainingDeadline, 0, com.avilaos.core.model.BlockReason.NONE, null);
+        }
         public String getDescription() { return description; }
+        public int getId() { return id; }
+        public String getName() { return name; }
+        public com.avilaos.core.model.ProcessType getType() { return type; }
+        public int getRemainingTime() { return remainingTime; }
+        public int getTotalInstructions() { return totalInstructions; }
         public int getMemoryAddressRegister() { return memoryAddressRegister; }
+        public int getProgramCounter() { return programCounter; }
         public int getPriority() { return priority; }
+        public int getDeadline() { return deadline; }
         public int getRemainingDeadline() { return remainingDeadline; }
+        public int getAssignedMemory() { return assignedMemory; }
+        public com.avilaos.core.model.BlockReason getBlockReason() { return blockReason; }
+        public String getTargetBufferId() { return targetBufferId; }
         @Override public String toString() { return description; }
     }
     public record CpuView(ProcessView PCB, ExecutionMode mode, int PC) {
@@ -44,10 +72,14 @@ public final class SimulationSnapshot {
     public record RamView(int totalSize) {
         public int getTotalSize() { return totalSize; }
     }
-    public record QueueView(int count, String text) {
+    public record QueueView(int count, String text, Values<ProcessView> processes) {
+        public QueueView(int count, String text) {
+            this(count, text, new Values<>(new Object[0]));
+        }
         public int getCount() { return count; }
         public String getText() { return text; }
         public int size() { return count; }
+        public Values<ProcessView> getProcesses() { return processes; }
         @Override public String toString() { return text; }
     }
     public record KernelView(QueueView newQueue, QueueView readyQueue, QueueView blockedQueue, QueueView endedQueue) {
@@ -80,7 +112,10 @@ public final class SimulationSnapshot {
         public int getCount() { return count; }
         public int availablePermits() { return count; }
     }
-    public record BufferView(int id, int idComp, int storage, int sizeInMemory, int produced, int comsumed, QueueView datos, PermitView mutex, PermitView llenos, PermitView vacios, String blockedProcessesAsString) {
+    public record BufferView(int id, int idComp, int storage, int sizeInMemory, int produced, int comsumed, QueueView datos, PermitView mutex, PermitView llenos, PermitView vacios, String blockedProcessesAsString, int latency) {
+        public BufferView(int id, int idComp, int storage, int sizeInMemory, int produced, int comsumed, QueueView datos, PermitView mutex, PermitView llenos, PermitView vacios, String blockedProcessesAsString) {
+            this(id, idComp, storage, sizeInMemory, produced, comsumed, datos, mutex, llenos, vacios, blockedProcessesAsString, 0);
+        }
         public int getId() { return id; }
         public int getIdComp() { return idComp; }
         public int getStorage() { return storage; }
@@ -92,18 +127,52 @@ public final class SimulationSnapshot {
         public PermitView getLlenos() { return llenos; }
         public PermitView getVacios() { return vacios; }
         public String getBlockedProcessesAsString() { return blockedProcessesAsString; }
+        public int getLatency() { return latency; }
     }
+
+    private static ProcessView toProcessView(ProcessControlBlock p) {
+        if (p == null) return null;
+        int mem = p.getAssignedMemory() > 0 ? p.getAssignedMemory() : p.getRequiredMemory();
+        return new ProcessView(
+                p.toString(),
+                p.getId(),
+                p.getName(),
+                p.getType(),
+                p.getRemainingTime(),
+                p.getTotalInstructions(),
+                p.getMemoryAddressRegister(),
+                p.getProgramCounter(),
+                p.getPriority(),
+                p.getDeadline(),
+                p.getRemainingDeadline(),
+                mem,
+                p.getBlockReason() != null ? p.getBlockReason() : BlockReason.NONE,
+                p.getTargetBufferId()
+        );
+    }
+
+    private static QueueView toQueueView(com.avilaos.core.structures.MyQueue<ProcessControlBlock> q) {
+        if (q == null) return new QueueView(0, "[]", new Values<>(new Object[0]));
+        Object[] raw = q.toArray();
+        Object[] views = new Object[raw.length];
+        for (int i = 0; i < raw.length; i++) {
+            views[i] = toProcessView((ProcessControlBlock) raw[i]);
+        }
+        return new QueueView(q.size(), q.toString(), new Values<>(views));
+    }
+
     public SimulationSnapshot(long session, int cycle, boolean running, boolean paused, int interval,
             MyLinkedList<Computer> nodes, MyLinkedList<Buffer> sources, SimulationSnapshot previous) {
         this.session=session; this.cycle=cycle; this.running=running; this.paused=paused; this.interval=interval;
         Object[] copiedNodes = new Object[nodes.size()];
         for (int i=0; i<nodes.size(); i++) {
             var c=nodes.get(i); var p=c.getCpu().getPCB(); var k=c.getKernel();
-            var cpu=new CpuView(p==null ? null : new ProcessView(p.toString(),p.getId(),p.getName(),p.getType(),p.getRemainingTime(),p.getMemoryAddressRegister(),p.getPriority(),p.getRemainingDeadline()), c.getCpu().getMode(), c.getCpu().getPC());
-            var kernel=new KernelView(new QueueView(k.getNewQueue().size(),k.getNewQueue().toString()),
-                    new QueueView(k.getReadyQueue().size(),k.getReadyQueue().toString()),
-                    new QueueView(k.getBlockedQueue().size(),k.getBlockedQueue().toString()),
-                    new QueueView(k.getEndedQueue().size(),k.getEndedQueue().toString()));
+            var cpu=new CpuView(toProcessView(p), c.getCpu().getMode(), c.getCpu().getPC());
+            var kernel=new KernelView(
+                    toQueueView(k.getNewQueue()),
+                    toQueueView(k.getReadyQueue()),
+                    toQueueView(k.getBlockedQueue()),
+                    toQueueView(k.getEndedQueue()));
             copiedNodes[i]=new Node(c.getId(),c.getName(),c.getPolitica(),c.getQuantum(),cpu,
                     new MemoryView(c.getMemoryManager().getTotalMemory(),c.getMemoryManager().getUsedMemory()),
                     new RamView(c.getRam().getTotalSize()),kernel,c.getCiclosActivos(),c.getCiclosObservados(),
@@ -112,9 +181,12 @@ public final class SimulationSnapshot {
         Object[] copiedBuffers=new Object[sources.size()];
         for(int i=0;i<sources.size();i++) {
             var b=sources.get(i);
+            int m = b.getTheoreticalValue(Buffer.SemaphoreKind.MUTEX);
+            int l = b.getTheoreticalValue(Buffer.SemaphoreKind.LLENOS);
+            int v = b.getTheoreticalValue(Buffer.SemaphoreKind.VACIOS);
             copiedBuffers[i]=new BufferView(b.getId(),b.getIdComp(),b.getStorage(),b.getSizeInMemory(),b.getProduced(),b.getComsumed(),
-                    new QueueView(b.getDatos().size(),""),new PermitView(b.getMutex().availablePermits()),
-                    new PermitView(b.getLlenos().availablePermits()),new PermitView(b.getVacios().availablePermits()),b.getBlockedProcessesAsString());
+                    new QueueView(b.getDatos().size(),""),new PermitView(m),
+                    new PermitView(l),new PermitView(v),b.getBlockedProcessesAsString(), b.getLatency());
         }
         computers=new Values<>(copiedNodes); buffers=new Values<>(copiedBuffers);
         // Mantener muestras aunque el EDT omita refrescos. Ventana acotada a 2000 ciclos.

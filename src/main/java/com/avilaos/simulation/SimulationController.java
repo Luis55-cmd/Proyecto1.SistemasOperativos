@@ -3,7 +3,9 @@ package com.avilaos.simulation;
 import com.avilaos.core.kernel.ComputerKernel;
 import com.avilaos.core.kernel.GlobalClock;
 import com.avilaos.core.kernel.IClockTickable;
+import com.avilaos.core.model.BlockReason;
 import com.avilaos.core.model.ExecutionMode;
+import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessType;
 import com.avilaos.core.model.SchedulingPolicyType;
@@ -427,13 +429,22 @@ public class SimulationController implements IClockTickable {
     public Buffer createBuffer(int hostComputerId, int storage) {
         StateAccess.enter();
         try {
-        return createBuffer(hostComputerId, storage, storage);
+        return createBuffer(hostComputerId, storage, storage, getNetworkLatency());
 
         } finally { StateAccess.exit(); }
     }
 
     /** Compatibilidad con cargas anteriores: la RAM se deriva de capacidad, no del campo legacy memory. */
-    public Buffer createBuffer(int hostComputerId, int storage, int memory) {
+    public Buffer createBuffer(int hostComputerId, int storage, int latency) {
+        StateAccess.enter();
+        try {
+        return createBuffer(hostComputerId, storage, storage, latency);
+
+        } finally { StateAccess.exit(); }
+    }
+
+
+    public Buffer createBuffer(int hostComputerId, int storage, int memory, int latency) {
         StateAccess.enter();
         try {
         if (storage <= 0) {
@@ -446,7 +457,7 @@ public class SimulationController implements IClockTickable {
         }
 
         int id = nextBufferId;
-        Buffer buffer = new Buffer(null, null, null, hostComputerId, storage, id, new MyQueue<>(), storage);
+        Buffer buffer = new Buffer(null, null, null, hostComputerId, storage, id, new MyQueue<>(), storage, latency);
         boolean success = host.getKernel().placeBufferRAM(buffer, host);
         if (!success) {
             logEvent("Error: Memoria RAM insuficiente en " + host.getName() + " para crear el Buffer " + id);
@@ -456,7 +467,7 @@ public class SimulationController implements IClockTickable {
         nextBufferId++;
         this.buffers.append(buffer);
 
-        logEvent("Buffer " + id + " creado en " + host.getName() + " con capacidad " + storage);
+        logEvent("Buffer " + id + " creado en " + host.getName() + " con capacidad " + storage + " y latencia " + latency + " ticks");
         notifyGUI();
         return buffer;
 
@@ -515,13 +526,55 @@ public class SimulationController implements IClockTickable {
 
     public void setNetworkLatency(int latencyCycles) {
         StateAccess.enter();
-        try { this.syncDriver.setLatencia(latencyCycles);
-        logEvent("Latencia de red actualizada a " + latencyCycles + " ciclos");
+        try { 
+            this.syncDriver.setLatencia(latencyCycles);
+            for (int i = 0; i < this.buffers.size(); i++) {
+                Buffer b = this.buffers.get(i);
+                if (b != null) {
+                    b.setLatency(latencyCycles);
+                }
+            }
+            logEvent("Latencia de red actualizada a " + latencyCycles + " ciclos");
         } finally { StateAccess.exit(); }
     }
 
     public int getNetworkLatency() {
         return this.syncDriver.getLatencia();
+    }
+
+    public void setBufferLatency(int bufferId, int latency) {
+        StateAccess.enter();
+        try {
+            Buffer b = getBufferById(bufferId);
+            if (b != null) {
+                b.setLatency(latency);
+                int nuevaLat = b.getLatency();
+                MyLinkedList<ProcessControlBlock> procs = getAllProcesses();
+                for (int i = 0; i < procs.size(); i++) {
+                    ProcessControlBlock p = procs.get(i);
+                    if (p != null && p.getState() == ProcessState.BLOQUEADO && p.getBlockReason() == BlockReason.NETWORK_LATENCY) {
+                        int pBufId = p.getPermitBufferId();
+                        if (pBufId <= 0 && p.getTargetBufferId() != null) {
+                            try {
+                                pBufId = Integer.parseInt(p.getTargetBufferId().replaceAll("[^0-9]", ""));
+                            } catch (Exception ignored) {}
+                        }
+                        if (pBufId == bufferId) {
+                            if (p.getNetworkDelayRemaining() > nuevaLat) {
+                                p.setNetworkDelayRemaining(nuevaLat);
+                                if (nuevaLat <= 0) {
+                                    p.setNetworkDelayDone(true);
+                                }
+                            }
+                        }
+                    }
+                }
+                logEvent("Latencia del Buffer " + bufferId + " actualizada a " + nuevaLat + " ticks");
+                notifyGUI();
+            } else {
+                logEvent("Error: No se encontrÃ³ el Buffer con ID " + bufferId);
+            }
+        } finally { StateAccess.exit(); }
     }
 
     // =========================================================================

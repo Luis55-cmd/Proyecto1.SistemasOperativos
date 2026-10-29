@@ -144,12 +144,17 @@ public class Buffer {
     MyQueue<Object> datos;
     private int produced;
     private int comsumed;
+    private int latency;
 
     private final MyQueue<ProcessControlBlock> waitingMutex = new MyQueue<>();
     private final MyQueue<ProcessControlBlock> waitingVacios = new MyQueue<>();
     private final MyQueue<ProcessControlBlock> waitingLlenos = new MyQueue<>();
 
-    public Buffer(Semaphore mutex, Semaphore vacios, Semaphore llenos, int idComp, int storage, int id, MyQueue<Object> datos,  int sizeInMemory) {
+    public Buffer(Semaphore mutex, Semaphore vacios, Semaphore llenos, int idComp, int storage, int id, MyQueue<Object> datos, int sizeInMemory) {
+        this(mutex, vacios, llenos, idComp, storage, id, datos, sizeInMemory, 0);
+    }
+
+    public Buffer(Semaphore mutex, Semaphore vacios, Semaphore llenos, int idComp, int storage, int id, MyQueue<Object> datos, int sizeInMemory, int latency) {
         this.mutex = new Semaphore(1, true);
         this.vacios = new Semaphore(storage, true);
         this.llenos = new Semaphore(0, true);
@@ -160,6 +165,7 @@ public class Buffer {
         this.datos = datos;
         this.produced = 0;
         this.comsumed = 0;
+        this.latency = Math.max(0, latency);
     }
 
     public synchronized Object consume() {
@@ -257,6 +263,14 @@ public class Buffer {
         this.comsumed = comsumed;
     }
 
+    public int getLatency() {
+        return latency;
+    }
+
+    public void setLatency(int latency) {
+        this.latency = Math.max(0, latency);
+    }
+
     public synchronized void registerWaitingMutex(ProcessControlBlock pcb) {
         if (pcb == null) return;
         this.waitingMutex.removeElement(pcb);
@@ -316,6 +330,20 @@ public class Buffer {
         this.waitingMutex.removeElement(pcb);
         this.waitingVacios.removeElement(pcb);
         this.waitingLlenos.removeElement(pcb);
+    }
+
+    /**
+     * Retorna el valor del semáforo según la convención clásica de Stallings/Dijkstra:
+     * - Si es positivo (> 0): permisos disponibles.
+     * - Si es cero (== 0): ocupado sin procesos en espera.
+     * - Si es negativo (< 0): su valor absoluto indica la cantidad de procesos bloqueados en la cola de espera.
+     */
+    public synchronized int getTheoreticalValue(SemaphoreKind kind) {
+        return switch (kind) {
+            case MUTEX -> mutex.availablePermits() - waitingMutex.size();
+            case VACIOS -> vacios.availablePermits() - waitingVacios.size();
+            case LLENOS -> llenos.availablePermits() - waitingLlenos.size();
+        };
     }
 
     public MyQueue<ProcessControlBlock> getWaitingMutex() {

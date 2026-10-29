@@ -95,8 +95,26 @@ public class MyQueue<T> {
             }
             current = current.pNext;
         }
-    return false; 
-}
+        return false; 
+    }
+
+    /**
+     * Retorna una copia de los elementos actuales de la cola en un arreglo primitivo.
+     *
+     * @return Arreglo con los elementos en orden FIFO.
+     */
+    public Object[] toArray() {
+        int count = this.size;
+        Object[] arr = new Object[count];
+        Node<T> current = this.pFirst;
+        int i = 0;
+        while (current != null && i < count) {
+            arr[i++] = current.data;
+            current = current.pNext;
+        }
+        return arr;
+    }
+
     @Override
     public String toString() {
         if (isEmpty()) return "[]";

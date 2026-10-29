@@ -50,7 +50,7 @@ public class MemoryManagerAndAdmissionTest {
         RAM ram = new RAM(500, 0, new int[500]);
         ComputerKernel kernel = new ComputerKernel(
                 new MyLinkedList<>(), new MyQueue<>(), new MyQueue<>(),
-                new MyQueue<>(), null, null, null, new MyQueue<>(), null
+                new MyQueue<>(), new MyQueue<>(), null
         );
         Computer comp = new Computer(1, null, ram, null, kernel, SchedulingPolicyType.FCFS);
 
@@ -74,7 +74,7 @@ public class MemoryManagerAndAdmissionTest {
         RAM ram = new RAM(500, 0, new int[500]);
         ComputerKernel kernel = new ComputerKernel(
                 new MyLinkedList<>(), new MyQueue<>(), new MyQueue<>(),
-                new MyQueue<>(), null, null, null, new MyQueue<>(), null
+                new MyQueue<>(), new MyQueue<>(), null
         );
         Computer comp = new Computer(1, null, ram, null, kernel, SchedulingPolicyType.FCFS);
 
@@ -89,6 +89,8 @@ public class MemoryManagerAndAdmissionTest {
         // Al terminar P1, se debe liberar sus 300 MB y automáticamente admitir a P2
         kernel.terminateProcess(comp, p1);
 
+        if (p1.getAssignedMemory() != 0 || p1.getRequiredMemory() != 300)
+            throw new AssertionError("La memoria requerida debe sobrevivir a la liberación");
         if (p1.getState() != ProcessState.SALIENTE) throw new AssertionError("P1 debe estar SALIENTE");
         if (kernel.getEndedQueue().size() != 1) throw new AssertionError("endedQueue debe tener a P1");
 
@@ -106,7 +108,7 @@ public class MemoryManagerAndAdmissionTest {
         ProcessControlBlock pcb = new ProcessControlBlock("Prod", 1, ProcessType.PRODUCER, 20, 50, 1, 100);
         if (pcb.getMode() != ExecutionMode.USER) throw new AssertionError("Modo inicial debe ser USER");
 
-        pcb.setMode(ExecutionMode.SYSTEM);
-        if (pcb.getMode() != ExecutionMode.SYSTEM) throw new AssertionError("Debe permitir cambiar a modo SYSTEM");
+        pcb.setMode(ExecutionMode.KERNEL);
+        if (pcb.getMode() != ExecutionMode.KERNEL) throw new AssertionError("Debe permitir cambiar a modo KERNEL");
     }
 }

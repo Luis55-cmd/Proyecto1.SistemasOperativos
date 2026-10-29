@@ -1,6 +1,6 @@
 package com.avilaos.core.model;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.Semaphore;
 
 /**
  * Bloque de Control de Proceso (PCB) de ÁvilaOS.
@@ -12,7 +12,20 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ProcessControlBlock {
 
-    private static final AtomicInteger ID_GENERATOR = new AtomicInteger(1);
+    private static int nextId = 1;
+    private static final Semaphore ID_MUTEX = new Semaphore(1, true);
+
+    /** Un único hilo asigna e incrementa el contador. No modifica el reloj ni PCBs existentes. */
+    private static int allocateId() {
+        ID_MUTEX.acquireUninterruptibly();
+        try {
+            if (nextId == Integer.MAX_VALUE)
+                throw new IllegalStateException("Se agotaron los IDs de procesos");
+            return nextId++;
+        } finally {
+            ID_MUTEX.release();
+        }
+    }
 
     // Identificación y ubicación
     private int id;
@@ -27,6 +40,8 @@ public class ProcessControlBlock {
     private BlockReason blockReason;
     private int priority;
     private int assignedMemory;
+    /** Memoria solicitada al crear el proceso, incluso después de liberarla. */
+    private int requiredMemory;
 
     // Tiempos e instrucciones
     private int totalInstructions;
@@ -36,6 +51,8 @@ public class ProcessControlBlock {
     private int arrivalCycle;
     private int startCycle;
     private int completionCycle;
+    /** Ciclos acumulados sin ejecutar (listo o bloqueado) desde su admisión. */
+    private int waitingTime;
 
     // Registros hardware simulados
     private int programCounter;
@@ -46,17 +63,100 @@ public class ProcessControlBlock {
     private int cyclesPerOperation;
     private int requiredElements;
     private int processedElements;
-    
+
     private int memoryPointer;
-    private int syncStage = 0;               
+    public enum SyncPhase { WAIT_SLOT, WAIT_MUTEX, ACCESS, SIGNAL_MUTEX, SIGNAL_SLOT, WORK }
+    private SyncPhase syncPhase = SyncPhase.WORK;
+    private int operationWorkDone;
+    public SyncPhase getSyncPhase() { return syncPhase; }
+    public void setSyncPhase(SyncPhase phase) { syncPhase = phase; }
+    public int getOperationWorkDone() { return operationWorkDone; }
+    public void setOperationWorkDone(int value) { operationWorkDone = value; }
+    /** Solo la limpieza de recursos debe vaciar este registro, tras devolverlos. */
+    public void clearBufferPermits() {
+        holdsBufferMutex = false;
+        reservedBufferSlot = null;
+        pendingBufferSignal = null;
+        permitBufferId = -1;
+    }
+
     private int networkDelayRemaining = 0;   
     private boolean networkDelayDone = false;
+    private boolean terminated = false;
+
+    public enum BufferPermit { MUTEX, VACIOS, LLENOS }
+
+    // Una operación a la vez, contra un único buffer; no son permisos del hilo Java.
+    private int permitBufferId = -1;
+    private boolean holdsBufferMutex;
+    private BufferPermit reservedBufferSlot;
+    private BufferPermit pendingBufferSignal;
+
+    public int getPermitBufferId() { return permitBufferId; }
+    public boolean holdsBufferMutex() { return holdsBufferMutex; }
+    public BufferPermit getReservedBufferSlot() { return reservedBufferSlot; }
+    public BufferPermit getPendingBufferSignal() { return pendingBufferSignal; }
+
+    /** Valida antes de descontar el semáforo. No modifica el PCB. */
+    public void validateBufferPermitAcquisition(int bufferId, BufferPermit permit) {
+        if (bufferId < 0 || permit == null) throw new IllegalArgumentException("Permiso inválido");
+        if (permitBufferId != -1 && permitBufferId != bufferId)
+            throw new IllegalStateException("El PCB conserva recursos de otro buffer");
+        if (permit == BufferPermit.MUTEX ? holdsBufferMutex
+                : reservedBufferSlot != null || pendingBufferSignal != null)
+            throw new IllegalStateException("El PCB ya tiene una reserva o señal pendiente");
+    }
+
+    /** Se invoca solo tras adquirir o recibir por transferencia un permiso. */
+    public void grantBufferPermit(int bufferId, BufferPermit permit) {
+        validateBufferPermitAcquisition(bufferId, permit);
+        permitBufferId = bufferId;
+        if (permit == BufferPermit.MUTEX) holdsBufferMutex = true;
+        else reservedBufferSlot = permit;
+    }
+
+    /** Tras insertar/extraer: la reserva se transforma en una notificación pendiente.
+     * No modifica PC ni memoria; el ejecutor debe llamarla junto con la operación real.
+     */
+    public void recordBufferOperation(int bufferId) {
+        if (permitBufferId != bufferId || !holdsBufferMutex || reservedBufferSlot == null
+                || pendingBufferSignal != null)
+            throw new IllegalStateException("Operación sin mutex y reserva del buffer");
+        pendingBufferSignal = reservedBufferSlot == BufferPermit.VACIOS
+                ? BufferPermit.LLENOS : BufferPermit.VACIOS;
+        reservedBufferSlot = null;
+    }
+
+    /** No modifica estado: permite rechazar un signal inválido antes de ejecutarlo. */
+    public void validateBufferSignal(int bufferId, BufferPermit permit) {
+        if (permit == null) throw new IllegalArgumentException("Permiso inválido");
+        if (permitBufferId != bufferId || (permit == BufferPermit.MUTEX
+                ? !holdsBufferMutex : pendingBufferSignal != permit))
+            throw new IllegalStateException("El PCB no puede emitir este signal");
+    }
+
+    /** Consume la titularidad o notificación una vez, al emitir signal. */
+    public void recordBufferSignal(int bufferId, BufferPermit permit) {
+        validateBufferSignal(bufferId, permit);
+        if (permit == BufferPermit.MUTEX) holdsBufferMutex = false;
+        else pendingBufferSignal = null;
+        if (!holdsBufferMutex && reservedBufferSlot == null && pendingBufferSignal == null)
+            permitBufferId = -1;
+    }
+
+    // Atributos para procesos IO-bound
+    /** Ciclos de CPU que el proceso ejecuta antes de lanzar una solicitud de IO. 0 = no aplica. */
+    private int ioInterval = 0;
+    /** Ciclos que el proceso permanece bloqueado esperando IO. 0 = no aplica. */
+    private int ioDuration = 0;
+    /** Contador interno: ciclos restantes hasta el próximo evento IO (ejecución o bloqueo). */
+    private int ioCycleCountdown = 0;
 
     /**
      * Constructor por defecto: asigna ID único generado automáticamente.
      */
     public ProcessControlBlock() {
-        this.id = ID_GENERATOR.getAndIncrement();
+        this.id = allocateId();
         this.name = "Process-" + this.id;
         this.computerId = 0;
         this.state = ProcessState.NUEVO;
@@ -99,6 +199,7 @@ public class ProcessControlBlock {
         this.totalInstructions = totalInstructions;
         this.remainingTime = totalInstructions;
         this.assignedMemory = assignedMemory;
+        this.requiredMemory = assignedMemory;
         this.priority = priority;
         this.deadline = deadline;
         this.remainingDeadline = deadline;
@@ -207,7 +308,13 @@ public class ProcessControlBlock {
     }
 
     public static void resetIdGenerator(int initialValue) {
-        ID_GENERATOR.set(initialValue);
+        if (initialValue < 1) throw new IllegalArgumentException("El siguiente ID debe ser positivo");
+        ID_MUTEX.acquireUninterruptibly();
+        try {
+            nextId = initialValue;
+        } finally {
+            ID_MUTEX.release();
+        }
     }
     
     public void incrementProcessedElements() {
@@ -226,13 +333,37 @@ public class ProcessControlBlock {
             this.programCounter++;
         }
     }
+
+    public int getIoInterval() {
+        return ioInterval;
+    }
+
+    public void setIoInterval(int ioInterval) {
+        this.ioInterval = ioInterval;
+    }
+
+    public int getIoDuration() {
+        return ioDuration;
+    }
+
+    public void setIoDuration(int ioDuration) {
+        this.ioDuration = ioDuration;
+    }
+
+    public int getIoCycleCountdown() {
+        return ioCycleCountdown;
+    }
+
+    public void setIoCycleCountdown(int ioCycleCountdown) {
+        this.ioCycleCountdown = ioCycleCountdown;
+    }
     
     public int getSyncStage() {
-        return syncStage;
+        return syncPhase.ordinal();
     }
 
     public void setSyncStage(int syncStage) {
-        this.syncStage = syncStage;
+        this.syncPhase = SyncPhase.values()[syncStage];
     }
 
     public int getNetworkDelayRemaining() {
@@ -312,6 +443,10 @@ public class ProcessControlBlock {
         return assignedMemory;
     }
 
+    public int getRequiredMemory() {
+        return requiredMemory;
+    }
+
     public void setAssignedMemory(int assignedMemory) {
         this.assignedMemory = assignedMemory;
     }
@@ -348,6 +483,15 @@ public class ProcessControlBlock {
         this.remainingDeadline = remainingDeadline;
     }
 
+    public int getWaitingTime() {
+        return waitingTime;
+    }
+
+    /** Suma un ciclo de espera (listo o bloqueado sin ejecutar). */
+    public void incrementWaitingTime() {
+        this.waitingTime++;
+    }
+
     public int getArrivalCycle() {
         return arrivalCycle;
     }
@@ -370,6 +514,14 @@ public class ProcessControlBlock {
 
     public void setCompletionCycle(int completionCycle) {
         this.completionCycle = completionCycle;
+    }
+
+    public boolean isTerminated() {
+        return terminated;
+    }
+
+    public void setTerminated(boolean terminated) {
+        this.terminated = terminated;
     }
 
     public int getProgramCounter() {
@@ -445,17 +597,22 @@ public class ProcessControlBlock {
     }
 
     @Override
-    public String toString() {
-        return "PCB{" +
-                "id=" + id +
-                ", name='" + name + '\'' +
-                ", pc=" + computerId +
-                ", state=" + state +
-                ", type=" + type +
-                ", remTime=" + remainingTime +
-                ", remDeadline=" + remainingDeadline +
-                ", PC=" + programCounter +
-                ", MAR=" + memoryAddressRegister +
-                '}';
+public String toString() {
+    String textoNombre = name;
+    if (blockReason != null && blockReason != BlockReason.NONE) {
+        textoNombre += " [" + blockReason + "]";
     }
+
+    return "PCB{" +
+            "id=" + id +
+            ", name='" + textoNombre + '\'' +
+            ", pc=" + computerId +
+            ", state=" + state +
+            ", type=" + type +
+            ", remTime=" + remainingTime +
+            ", remDeadline=" + remainingDeadline +
+            ", PC=" + programCounter +
+            ", MAR=" + memoryAddressRegister +
+            '}';
+}
 }

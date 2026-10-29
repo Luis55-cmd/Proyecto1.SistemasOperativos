@@ -1,5 +1,5 @@
 package com.avilaos.core.structures;
-
+import com.avilaos.core.model.ProcessControlBlock;
 
 /**
  * Cola genérica propia (FIFO - First In, First Out).
@@ -95,6 +95,41 @@ public class MyQueue<T> {
             }
             current = current.pNext;
         }
-    return false; 
-}
+        return false; 
+    }
+
+    /**
+     * Retorna una copia de los elementos actuales de la cola en un arreglo primitivo.
+     *
+     * @return Arreglo con los elementos en orden FIFO.
+     */
+    public Object[] toArray() {
+        int count = this.size;
+        Object[] arr = new Object[count];
+        Node<T> current = this.pFirst;
+        int i = 0;
+        while (current != null && i < count) {
+            arr[i++] = current.data;
+            current = current.pNext;
+        }
+        return arr;
+    }
+
+    @Override
+    public String toString() {
+        if (isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        Node<T> current = pFirst;
+        while (current != null) {
+            if (current.data instanceof ProcessControlBlock pcb) {
+                sb.append(pcb.getName() != null ? pcb.getName() : "P").append("(").append(pcb.getId()).append(")");
+            } else {
+                sb.append(current.data.toString());
+            }
+            current = current.pNext;
+            if (current != null) sb.append(", ");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
 }

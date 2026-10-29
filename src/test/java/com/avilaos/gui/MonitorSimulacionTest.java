@@ -22,19 +22,25 @@ public class MonitorSimulacionTest {
         SwingUtilities.invokeAndWait(() -> {
             var controller = SimulationController.getInstance(); controller.reset();
             var panel = new PanelPrincipal(); panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
+            ((JButton) CreacionComputadoresGuiTest.buscar(panel, JButton.class, "06   Métricas")).doClick();
+            if (panel.getDestinoActual() != PanelPrincipal.Destino.METRICAS) throw new AssertionError("MENU: acceso directo a métricas");
+            panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
             var monitor = (MonitorSimulacion) CreacionComputadoresGuiTest.buscar(panel, MonitorSimulacion.class, null);
             var pestanas = (JTabbedPane) CreacionComputadoresGuiTest.buscar(monitor, JTabbedPane.class, null);
-            if (pestanas.getTabCount() != 1 || !contiene(monitor, "Todavía no hay computadores")) throw new AssertionError("Vacío");
+            if (pestanas.getTabCount() != 2 || !contiene(monitor, "Todavía no hay computadores")) throw new AssertionError("Vacío");
             ((JButton) CreacionComputadoresGuiTest.buscar(monitor, JButton.class, "Crear un computador →")).doClick();
             if (panel.getDestinoActual() != PanelPrincipal.Destino.COMPUTADOR) throw new AssertionError("Navegación");
             var norte = controller.createComputer("Norte", 128, SchedulingPolicyType.FCFS);
             controller.createComputer("Sur", 256, SchedulingPolicyType.EDF);
             panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
-            if (pestanas.getTabCount() != 3 || !contiene(monitor, "CPU libre")) throw new AssertionError("Computadores");
+            if (pestanas.getTabCount() != 4 || !contiene(monitor, "CPU libre · KERNEL")) throw new AssertionError("Computadores");
             ((JButton) CreacionComputadoresGuiTest.buscar(monitor, JButton.class, "Ver detalle →")).doClick();
             if (pestanas.getSelectedIndex() != 1) throw new AssertionError("Abrir detalle");
             controller.createComputer("Este", 512, SchedulingPolicyType.ROUND_ROBIN); monitor.actualizarVista();
-            if (pestanas.getTabCount() != 4 || pestanas.getSelectedIndex() != 1) throw new AssertionError("Conservar pestaña");
+            if (pestanas.getTabCount() != 5 || pestanas.getSelectedIndex() != 1) throw new AssertionError("Conservar pestaña");
+            pestanas.setSelectedIndex(pestanas.indexOfTab("Métricas"));
+            controller.createComputer("Oeste", 128, SchedulingPolicyType.FCFS); monitor.actualizarVista();
+            if (!"Métricas".equals(pestanas.getTitleAt(pestanas.getSelectedIndex()))) throw new AssertionError("METRICAS: conservar selección al agregar computador");
             if (controller.getCurrentCycle() != 0) throw new AssertionError("Monitor avanzó reloj");
             controller.createProcess("Prueba CPU", norte.getId(), ProcessType.CPU_BOUND, 2, 32, 1, 100);
             monitor.actualizarVista();

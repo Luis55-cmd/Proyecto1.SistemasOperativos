@@ -1,7 +1,5 @@
 package com.avilaos.core.scheduler;
 
-import java.util.Comparator;
-
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.model.SchedulingPolicyType;
@@ -21,20 +19,24 @@ public class PreemptivePriorityScheduler implements IScheduler {
     private final MyQueue<ProcessControlBlock> readyQueue;
     private boolean higherNumberIsHigherPriority;
 
-    private final Comparator<ProcessControlBlock> priorityComparator = (p1, p2) -> {
-        int cmp;
-        if (higherNumberIsHigherPriority) {
-            // Mayor número = mayor prioridad (ej: prioridad 10 antes que prioridad 1)
-            cmp = Integer.compare(p2.getPriority(), p1.getPriority());
-        } else {
-            // Menor número = mayor prioridad (ej: prioridad 1 antes que prioridad 10)
-            cmp = Integer.compare(p1.getPriority(), p2.getPriority());
+    // Se utiliza la clase abstracta MyComparator propia en lugar de java.util.Comparator
+    private final MyLinkedList.MyComparator<ProcessControlBlock> priorityComparator = new MyLinkedList.MyComparator<ProcessControlBlock>() {
+        @Override
+        public int compare(ProcessControlBlock p1, ProcessControlBlock p2) {
+            int cmp;
+            if (higherNumberIsHigherPriority) {
+                // Mayor número = mayor prioridad (ej: prioridad 10 antes que prioridad 1)
+                cmp = Integer.compare(p2.getPriority(), p1.getPriority());
+            } else {
+                // Menor número = mayor prioridad (ej: prioridad 1 antes que prioridad 10)
+                cmp = Integer.compare(p1.getPriority(), p2.getPriority());
+            }
+            if (cmp == 0) {
+                // Empate resuelto por FIFO (menor ID primero)
+                return Integer.compare(p1.getId(), p2.getId());
+            }
+            return cmp;
         }
-        if (cmp == 0) {
-            // Empate resuelto por FIFO (menor ID primero)
-            return Integer.compare(p1.getId(), p2.getId());
-        }
-        return cmp;
     };
 
     public PreemptivePriorityScheduler() {
@@ -49,6 +51,10 @@ public class PreemptivePriorityScheduler implements IScheduler {
     @Override
     public ProcessControlBlock scheduleNext(MyQueue<ProcessControlBlock> queue, ProcessControlBlock currentRunning) {
         MyQueue<ProcessControlBlock> targetQueue = (queue != null) ? queue : this.readyQueue;
+
+        // El kernel entrega su propia cola, que puede contener nuevas admisiones sin ordenar.
+        // Ordenar antes de peek/dequeue cubre CPU libre y apropiación, y deja visible el orden real.
+        sortQueue(targetQueue);
 
         // Si hay un proceso en CPU, verificamos si algún proceso en cola tiene mayor prioridad (desalojo)
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
@@ -125,6 +131,10 @@ public class PreemptivePriorityScheduler implements IScheduler {
         }
     }
 
+    public void sortReadyQueue(MyQueue<ProcessControlBlock> queue) {
+        sortQueue(queue);
+    }
+
     private void sortQueue(MyQueue<ProcessControlBlock> queue) {
         if (queue == null || queue.size() <= 1) {
             return;
@@ -133,9 +143,13 @@ public class PreemptivePriorityScheduler implements IScheduler {
         while (!queue.isEmpty()) {
             list.add(queue.dequeue());
         }
+        
         list.sort(this.priorityComparator);
-        for (ProcessControlBlock p : list) {
-            queue.enqueue(p);
+        
+        // Uso del iterador manual instanciado desde la clase concreta (sin for-each)
+        MyLinkedList<ProcessControlBlock>.MyLinkedListIterator iter = list.iterator();
+        while (iter.hasNext()) {
+            queue.enqueue(iter.next());
         }
     }
 

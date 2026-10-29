@@ -1,7 +1,5 @@
 package com.avilaos.core.scheduler;
 
-import java.util.Comparator;
-
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.model.SchedulingPolicyType;
@@ -19,12 +17,16 @@ public class EdfScheduler implements IScheduler {
 
     private final MyQueue<ProcessControlBlock> readyQueue;
 
-    private static final Comparator<ProcessControlBlock> EDF_COMPARATOR = (p1, p2) -> {
-        int cmp = Integer.compare(p1.getRemainingDeadline(), p2.getRemainingDeadline());
-        if (cmp == 0) {
-            return Integer.compare(p1.getId(), p2.getId());
+    // Se utiliza la clase abstracta MyComparator propia en lugar de java.util.Comparator
+    private static final MyLinkedList.MyComparator<ProcessControlBlock> EDF_COMPARATOR = new MyLinkedList.MyComparator<ProcessControlBlock>() {
+        @Override
+        public int compare(ProcessControlBlock p1, ProcessControlBlock p2) {
+            int cmp = Integer.compare(p1.getRemainingDeadline(), p2.getRemainingDeadline());
+            if (cmp == 0) {
+                return Integer.compare(p1.getId(), p2.getId());
+            }
+            return cmp;
         }
-        return cmp;
     };
 
     public EdfScheduler() {
@@ -34,6 +36,7 @@ public class EdfScheduler implements IScheduler {
     @Override
     public ProcessControlBlock scheduleNext(MyQueue<ProcessControlBlock> queue, ProcessControlBlock currentRunning) {
         MyQueue<ProcessControlBlock> targetQueue = (queue != null) ? queue : this.readyQueue;
+        sortQueue(targetQueue);
 
         // Si hay un proceso en CPU, verificamos si hay algún candidato con deadline más urgente (desalojo)
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
@@ -101,6 +104,10 @@ public class EdfScheduler implements IScheduler {
         sortQueue(this.readyQueue);
     }
 
+    public void sortReadyQueue(MyQueue<ProcessControlBlock> queue) {
+        sortQueue(queue);
+    }
+
     private void sortQueue(MyQueue<ProcessControlBlock> queue) {
         if (queue == null || queue.size() <= 1) {
             return;
@@ -109,9 +116,13 @@ public class EdfScheduler implements IScheduler {
         while (!queue.isEmpty()) {
             list.add(queue.dequeue());
         }
+        
         list.sort(EDF_COMPARATOR);
-        for (ProcessControlBlock p : list) {
-            queue.enqueue(p);
+        
+        // Uso del iterador manual instanciado desde la clase concreta (sin for-each)
+        MyLinkedList<ProcessControlBlock>.MyLinkedListIterator iter = list.iterator();
+        while (iter.hasNext()) {
+            queue.enqueue(iter.next());
         }
     }
 }

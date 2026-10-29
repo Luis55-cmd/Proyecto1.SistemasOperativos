@@ -1,22 +1,31 @@
 package com.avilaos.core.structures;
 
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-
 /**
- * Lista enlazada simple genérica propia sin usar colecciones de java.util.
+ * Lista enlazada simple genérica propia sin usar colecciones de java.util
+ * y sin declarar ninguna interfaz.
  * 
  * Responsabilidades:
  * - Inserción al inicio, al final y por posición.
  * - Eliminación por valor, por posición y de extremos.
  * - Búsqueda, verificación de contención y acceso por índice.
- * - Ordenamiento in-situ con comparador propio.
- * - Soporte para iteración (Iterable e Iterator propios sin usar colecciones java.util).
+ * - Ordenamiento in-situ con clase abstracta comparadora.
+ * - Soporte para iteración manual mediante clase concreta.
  * 
  * @param <T> Tipo de elemento almacenado.
  */
-public class MyLinkedList<T> implements Iterable<T> {
+public class MyLinkedList<T> {
+    public static abstract class MyComparator<E> {
+        public abstract int compare(E o1, E o2);
+    }
+
+    /** Excepción propia para reemplazar NoSuchElementException */
+    public static class ElementoNoEncontradoException extends RuntimeException {
+        public ElementoNoEncontradoException(String message) {
+            super(message);
+        }
+    }
+
+    // --- ESTRUCTURA DE LA LISTA ---
 
     Node<T> pFirst;
     Node<T> pLast;
@@ -36,12 +45,6 @@ public class MyLinkedList<T> implements Iterable<T> {
         return this.size;
     }
 
-    /**
-     * Agrega un elemento al final de la lista.
-     * Alias del contrato oficial: add(T data).
-     *
-     * @param data Elemento a agregar.
-     */
     public void add(T data) {
         append(data);
     }
@@ -57,12 +60,6 @@ public class MyLinkedList<T> implements Iterable<T> {
         this.size++;
     }
 
-    /**
-     * Agrega un elemento al inicio de la lista.
-     * Alias del contrato oficial: addFirst(T data).
-     *
-     * @param data Elemento a agregar.
-     */
     public void addFirst(T data) {
         insertFirst(data);
     }
@@ -148,12 +145,6 @@ public class MyLinkedList<T> implements Iterable<T> {
         this.size--;
     }
 
-    /**
-     * Remueve la primera ocurrencia del elemento especificado.
-     *
-     * @param data Elemento a remover.
-     * @return true si el elemento fue encontrado y removido, false en caso contrario.
-     */
     public boolean remove(T data) {
         if (isEmpty()) {
             return false;
@@ -177,13 +168,6 @@ public class MyLinkedList<T> implements Iterable<T> {
         return false;
     }
 
-    /**
-     * Obtiene el elemento ubicado en el índice especificado.
-     *
-     * @param index Posición (0-indexada).
-     * @return Elemento en dicha posición.
-     * @throws IndexOutOfBoundsException si el índice es inválido.
-     */
     public T get(int index) {
         if (index < 0 || index >= this.size) {
             throw new IndexOutOfBoundsException("Posicion invalida: " + index);
@@ -195,12 +179,6 @@ public class MyLinkedList<T> implements Iterable<T> {
         return current.data;
     }
 
-    /**
-     * Determina si la lista contiene el elemento especificado.
-     *
-     * @param data Elemento a buscar.
-     * @return true si está presente, false en caso contrario.
-     */
     public boolean contains(T data) {
         Node<T> current = this.pFirst;
         while (current != null) {
@@ -213,12 +191,9 @@ public class MyLinkedList<T> implements Iterable<T> {
     }
 
     /**
-     * Ordena la lista enlazada in-situ utilizando el comparador provisto.
-     * Algoritmo de ordenamiento por inserción sobre nodos propios.
-     *
-     * @param comp Comparador a utilizar.
+     * Ordena la lista enlazada in-situ utilizando una clase abstracta comparadora.
      */
-    public void sort(Comparator<T> comp) {
+    public void sort(MyComparator<T> comp) {
         if (this.size <= 1) {
             return;
         }
@@ -247,23 +222,26 @@ public class MyLinkedList<T> implements Iterable<T> {
         this.pLast = tail;
     }
 
-    @Override
-    public Iterator<T> iterator() {
+    // --- RECORRIDO DE LA LISTA SIN INTERFACES ---
+
+    /**
+     * Devuelve una instancia de la clase concreta iteradora.
+     */
+    public MyLinkedListIterator iterator() {
         return new MyLinkedListIterator();
     }
 
-    private class MyLinkedListIterator implements Iterator<T> {
+    /** Clase concreta para recorrer la lista */
+    public class MyLinkedListIterator {
         private Node<T> current = pFirst;
 
-        @Override
         public boolean hasNext() {
             return current != null;
         }
 
-        @Override
         public T next() {
             if (!hasNext()) {
-                throw new NoSuchElementException("No hay mas elementos en la lista");
+                throw new ElementoNoEncontradoException("No hay mas elementos en la lista");
             }
             T val = current.data;
             current = current.pNext;

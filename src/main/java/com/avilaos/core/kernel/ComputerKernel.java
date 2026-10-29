@@ -31,14 +31,33 @@ public class ComputerKernel {
 
     private IScheduler activeScheduler;
     private SchedulingPolicyType currentPolicy;
+    public interface IEventListener { void accept(String message); }
+    private IEventListener eventListener;
+
+    public void setEventListener(IEventListener listener) { this.eventListener = listener; }
+    private void event(String message) { if (eventListener != null) eventListener.accept(message); }
+    private String proceso(ProcessControlBlock p) { return p.getName() + " (ID " + p.getId() + ", computador " + p.getComputerId() + ")"; }
+    private String formatBuffer(ProcessControlBlock p) {
+        String b = p.getTargetBufferId();
+        if (b == null) return "B1";
+        if (b.startsWith("B") || b.startsWith("Buffer ")) return b;
+        return "B" + b;
+    }
+    private String motivo(ProcessControlBlock p) {
+        return switch (p.getBlockReason()) {
+            case WAITING_MUTEX -> "en el sem\u00e1foro 'mutex' del buffer " + formatBuffer(p);
+            case WAITING_EMPTY_BUFFER -> "en el sem\u00e1foro 'lleno' del buffer " + formatBuffer(p) + " (sin elementos (sem\u00e1foro llenos))";
+            case WAITING_FULL_BUFFER -> "en el sem\u00e1foro 'vac\u00edo' del buffer " + formatBuffer(p) + " (sin espacios (sem\u00e1foro vac\u00edos))";
+            case NETWORK_LATENCY -> "latencia de red para buffer " + formatBuffer(p);
+            case WAITING_IO -> "espera de E/S";
+            default -> "motivo no especificado";
+        };
+    }
 
     public ComputerKernel(MyLinkedList<ProcessControlBlock> processList,
                           MyQueue<ProcessControlBlock> blockedQueue,
                           MyQueue<ProcessControlBlock> newQueue,
                           MyQueue<ProcessControlBlock> readyQueue,
-                          MyQueue<ProcessControlBlock> readyQueue2,
-                          MyQueue<ProcessControlBlock> readyQueue3,
-                          MyQueue<ProcessControlBlock> readyQueue4,
                           MyQueue<ProcessControlBlock> endedQueue,
                           GlobalClock clock) {
         this.processList = (processList != null) ? processList : new MyLinkedList<>();
@@ -67,6 +86,7 @@ public class ComputerKernel {
             p.setBlockReason(BlockReason.NONE);
             this.newQueue.removeElement(p);
             this.readyQueue.enqueue(p);
+            reorderReadyQueue(com.getPolitica(), false);
             return true;
         } else {
             p.setState(ProcessState.NUEVO);
@@ -96,11 +116,15 @@ public class ComputerKernel {
                 nextNew.setState(ProcessState.LISTO);
                 nextNew.setBlockReason(BlockReason.NONE);
                 this.readyQueue.enqueue(nextNew);
+                event(proceso(nextNew) + " admitido desde nuevos tras liberarse RAM");
                 admittedCount++;
             } else {
                 // FIFO estricto: si el primer proceso en espera no cabe, se detiene la admisión
                 break;
             }
+        }
+        if (admittedCount > 0) {
+            reorderReadyQueue(com.getPolitica(), false);
         }
         return admittedCount;
     }
@@ -119,6 +143,11 @@ public class ComputerKernel {
             return "Error: Computador o proceso inválido.";
         }
 
+        if (idComp.getMemoryManager() != null && p.getAssignedMemory() > idComp.getMemoryManager().getTotalMemory()) {
+            return "Error: La memoria solicitada (" + p.getAssignedMemory() + ") excede la RAM total (" 
+                    + idComp.getMemoryManager().getTotalMemory() + ") de " + idComp.getName() + ".";
+        }
+
         this.processList.append(p);
 
         boolean admitido = admitProcess(idComp, p);
@@ -126,6 +155,48 @@ public class ComputerKernel {
             return "Se ha creado el proceso y admitido a la cola de listos.";
         } else {
             return "Memoria insuficiente: Proceso en cola de NUEVOS en espera de RAM.";
+        }
+    }
+
+    /**
+     * Restaura un proceso desde un snapshot/JSON, ubicándolo directamente en su estado y cola
+     * correspondiente y reservando memoria si se encuentra activo en RAM.
+     */
+    public void restoreProcess(Computer com, ProcessControlBlock p) {
+        if (com == null || p == null) return;
+        this.processList.append(p);
+
+        if (p.getState() == ProcessState.EJECUTANDO
+                || p.getState() == ProcessState.LISTO
+                || p.getState() == ProcessState.BLOQUEADO) {
+            if (com.getMemoryManager() != null) {
+                com.getMemoryManager().allocateMemory(p.getAssignedMemory());
+            }
+        }
+
+        switch (p.getState()) {
+            case EJECUTANDO:
+                if (com.getCpu() != null) {
+                    com.getCpu().setPCB(p);
+                    com.getCpu().setPC(p.getProgramCounter());
+                    com.getCpu().setMAR(p.getMemoryAddressRegister());
+                    com.getCpu().setMode(p.getMode() != null ? p.getMode() : ExecutionMode.USER);
+                }
+                break;
+            case LISTO:
+                this.readyQueue.enqueue(p);
+                reorderReadyQueue(com.getPolitica(), false);
+                break;
+            case BLOQUEADO:
+                this.blockedQueue.enqueue(p);
+                break;
+            case SALIENTE:
+                this.endedQueue.enqueue(p);
+                break;
+            case NUEVO:
+            default:
+                this.newQueue.enqueue(p);
+                break;
         }
     }
 
@@ -143,19 +214,23 @@ public class ComputerKernel {
                 this.newQueue.removeElement(p);
                 this.readyQueue.enqueue(p);
                 p.setState(ProcessState.LISTO);
+                reorderReadyQueue(com.getPolitica(), false);
             }
         }
     }
 
     /**
-     * Despacha el siguiente proceso de la cola de listos a la CPU usando la política activa.
+     * Despacha el siguiente proceso de la cola de listos o evalúa el desalojo del proceso en CPU.
      */
     public void dispatch(Computer com, ProcessControlBlock p) {
         if (com == null) {
             return;
         }
 
-        if (this.readyQueue.isEmpty()) {
+        ProcessControlBlock currentRunning = (p != null && p.getState() == ProcessState.EJECUTANDO) ? p : null;
+
+        // Si la cola de listos está vacía y la CPU está libre, no hay nada que despachar
+        if (this.readyQueue.isEmpty() && currentRunning == null) {
             if (com.getCpu() != null) {
                 com.getCpu().setPCB(null);
             }
@@ -163,16 +238,31 @@ public class ComputerKernel {
         }
 
         IScheduler scheduler = getOrUpdateScheduler(com);
-        ProcessControlBlock currentRunning = (p != null && p.getState() == ProcessState.EJECUTANDO) ? p : null;
         ProcessControlBlock next = scheduler.scheduleNext(this.readyQueue, currentRunning);
 
         if (next != null) {
+            if (next != currentRunning) {
+                if (currentRunning != null) event(com.getName() + " desaloja el proceso " + currentRunning.getName());
+                event(com.getName() + " selecciona " + proceso(next) + " (política " + com.getPolitica() + ")");
+            }
+            // Guardar contexto del proceso desalojado si fue reemplazado por otro proceso
+            if (currentRunning != null && currentRunning != next) {
+                if (com.getCpu() != null) {
+                    currentRunning.setProgramCounter(com.getCpu().getPC());
+                    currentRunning.setMemoryAddressRegister(com.getCpu().getMAR());
+                }
+            }
+
             next.setState(ProcessState.EJECUTANDO);
             if (com.getCpu() != null) {
                 com.getCpu().setPCB(next);
                 com.getCpu().setPC(next.getProgramCounter());
                 com.getCpu().setMAR(next.getMemoryAddressRegister());
                 com.getCpu().setMode(next.getMode() != null ? next.getMode() : ExecutionMode.USER);
+            }
+        } else {
+            if (com.getCpu() != null) {
+                com.getCpu().setPCB(null);
             }
         }
     }
@@ -186,13 +276,75 @@ public class ComputerKernel {
             this.currentPolicy = policy;
             switch (policy) {
                 case FCFS -> this.activeScheduler = new FcfsScheduler();
-                case ROUND_ROBIN -> this.activeScheduler = new RoundRobinScheduler(3);
+                case ROUND_ROBIN -> this.activeScheduler = new RoundRobinScheduler(com != null ? com.getQuantum() : 3);
                 case EDF -> this.activeScheduler = new EdfScheduler();
                 case PRIORITY_PREEMPTIVE -> this.activeScheduler = new PreemptivePriorityScheduler();
                 default -> this.activeScheduler = new FcfsScheduler();
             }
+        } else if (policy == SchedulingPolicyType.ROUND_ROBIN && this.activeScheduler instanceof RoundRobinScheduler rr) {
+            if (com != null && rr.getQuantum() != com.getQuantum()) {
+                rr.setQuantum(com.getQuantum());
+            }
         }
         return this.activeScheduler;
+    }
+
+    /**
+     * Actualiza el quantum del planificador Round Robin activo en caliente.
+     */
+    private static final MyLinkedList.MyComparator<ProcessControlBlock> FIFO_COMPARATOR = new MyLinkedList.MyComparator<ProcessControlBlock>() {
+        @Override
+        public int compare(ProcessControlBlock p1, ProcessControlBlock p2) {
+            int cmp = Integer.compare(p1.getArrivalCycle(), p2.getArrivalCycle());
+            if (cmp == 0) {
+                return Integer.compare(p1.getId(), p2.getId());
+            }
+            return cmp;
+        }
+    };
+
+    public void onPolicyChanged(Computer com) {
+        if (com == null) return;
+        SchedulingPolicyType newPolicy = com.getPolitica() != null ? com.getPolitica() : SchedulingPolicyType.FCFS;
+        getOrUpdateScheduler(com);
+        reorderReadyQueue(newPolicy, true);
+    }
+
+    public void reorderReadyQueue(SchedulingPolicyType policy, boolean restoreFifoIfSequential) {
+        SchedulingPolicyType effectivePolicy = (policy != null) ? policy : this.currentPolicy;
+        if (this.readyQueue == null || this.readyQueue.size() <= 1 || effectivePolicy == null) {
+            return;
+        }
+        if (effectivePolicy == SchedulingPolicyType.EDF) {
+            if (this.activeScheduler instanceof EdfScheduler edf) {
+                edf.sortReadyQueue(this.readyQueue);
+            } else {
+                new EdfScheduler().sortReadyQueue(this.readyQueue);
+            }
+        } else if (effectivePolicy == SchedulingPolicyType.PRIORITY_PREEMPTIVE) {
+            if (this.activeScheduler instanceof PreemptivePriorityScheduler prio) {
+                prio.sortReadyQueue(this.readyQueue);
+            } else {
+                new PreemptivePriorityScheduler().sortReadyQueue(this.readyQueue);
+            }
+        } else if (restoreFifoIfSequential
+                && (effectivePolicy == SchedulingPolicyType.FCFS || effectivePolicy == SchedulingPolicyType.ROUND_ROBIN)) {
+            MyLinkedList<ProcessControlBlock> list = new MyLinkedList<>();
+            while (!this.readyQueue.isEmpty()) {
+                list.add(this.readyQueue.dequeue());
+            }
+            list.sort(FIFO_COMPARATOR);
+            MyLinkedList<ProcessControlBlock>.MyLinkedListIterator iter = list.iterator();
+            while (iter.hasNext()) {
+                this.readyQueue.enqueue(iter.next());
+            }
+        }
+    }
+
+    public void updateQuantum(int quantum) {
+        if (this.activeScheduler instanceof RoundRobinScheduler rr) {
+            rr.setQuantum(quantum);
+        }
     }
 
     public void terminateFatherProcess(int fatherId) {
@@ -223,20 +375,24 @@ public class ComputerKernel {
     }
 
     public void terminateProcess(Computer com, ProcessControlBlock p) {
-        if (p == null) {
+        if (p == null || p.isTerminated()) {
             return;
         }
 
-        if (p.getState() == ProcessState.BLOQUEADO) {
-            this.blockedQueue.removeElement(p);
-        } else if (p.getState() == ProcessState.LISTO) {
-            this.readyQueue.removeElement(p);
-        } else if (p.getState() == ProcessState.NUEVO) {
-            this.newQueue.removeElement(p);
-        }
+        event(proceso(p) + (p.getRemainingDeadline() <= 0 ? " terminó por vencimiento de deadline" : " terminó normalmente"));
 
+        if (com != null) {
+            com.registrarTerminacion(p, clock != null ? clock.getCycleCounter() : Math.max(0, p.getCompletionCycle()));
+        }
+        p.setTerminated(true);
         p.setState(ProcessState.SALIENTE);
         p.setBlockReason(BlockReason.NONE);
+
+        this.blockedQueue.removeElement(p);
+        this.readyQueue.removeElement(p);
+        this.newQueue.removeElement(p);
+
+        this.endedQueue.removeElement(p); // Prevenir duplicados
         this.endedQueue.enqueue(p);
 
         // Desalojar CPU si el proceso terminado estaba corriendo en ella
@@ -246,11 +402,15 @@ public class ComputerKernel {
             com.getCpu().setPCB(null);
         }
 
-        // Liberar la memoria RAM asignada al proceso
-        if (com != null && com.getMemoryManager() != null) {
-            com.getMemoryManager().freeMemory(p.getAssignedMemory());
+        // Liberar la memoria RAM asignada al proceso (idempotente)
+        int memToFree = p.getAssignedMemory();
+        if (com != null && com.getMemoryManager() != null && memToFree > 0) {
+            com.getMemoryManager().freeMemory(memToFree);
+            p.setAssignedMemory(0); // Evitar doble liberación
             // Disparar admisión automática de la cola de NUEVOS
             evaluateNewQueueAdmission(com);
+        } else {
+            p.setAssignedMemory(0);
         }
 
         terminateFatherProcess(p.getId());
@@ -289,23 +449,27 @@ public class ComputerKernel {
 
     /**
      * Desbloquea un proceso y lo retorna a la cola de listos sin duplicados.
+     * Acepta procesos en estado BLOQUEADO o LISTO (cuando wakeUpProcess ya actualizó el estado).
      */
     public void blockedToReady(ProcessControlBlock p) {
         if (p == null || p.getState() == ProcessState.SALIENTE) {
             return;
         }
+        boolean estabaBloqueado = p.getState() == ProcessState.BLOQUEADO;
         this.blockedQueue.removeElement(p);
         p.setState(ProcessState.LISTO);
         p.setBlockReason(BlockReason.NONE);
         this.readyQueue.removeElement(p); // Prevenir duplicados
         this.readyQueue.enqueue(p);
+        reorderReadyQueue(this.currentPolicy, false);
+        if (estabaBloqueado) event(proceso(p) + " despertó y pasó a listos");
     }
 
     public boolean placeBufferRAM(Buffer buffer, Computer com) {
         if (buffer == null || com == null) {
             return false;
         }
-        int cantidad = buffer.getStorage();
+        int cantidad = buffer.getSizeInMemory();
         if (cantidad <= 0) {
             return false;
         }
@@ -387,9 +551,12 @@ public class ComputerKernel {
         CPU cpu = comp.getCpu();
         if (cpu == null) return;
 
+        comp.registrarCicloObservado();
+
         // 1. Notificar al planificador (quantum Round Robin, etc.)
-        if (this.activeScheduler != null) {
-            this.activeScheduler.onClockTick();
+        IScheduler scheduler = getOrUpdateScheduler(comp);
+        if (scheduler != null) {
+            scheduler.onClockTick();
         }
 
         // 2. Verificar y vencer deadlines (D-07, D-13)
@@ -398,15 +565,24 @@ public class ComputerKernel {
         // 3. Avanzar solicitudes pendientes de red para procesos bloqueados
         advanceNetworkDelays(comp, syncDriver);
 
-        // 4. Despachar si la CPU está libre
+        // 3.2 Avanzar temporizadores de bloqueo IO para procesos IO-bound
+        advanceIOBlocks();
+
+        // 3.5 Mover a readyQueue los procesos que wakeUpProcess marcó como LISTO
+        //     pero que aún pueden estar físicamente en blockedQueue.
+        flushWokenProcesses();
+
+        // 4. Despachar o evaluar desalojo en CPU (Round Robin quantum, prioridad, etc.)
         ProcessControlBlock currentRunning = cpu.getPCB();
-        if (currentRunning == null || currentRunning.getState() != ProcessState.EJECUTANDO) {
-            dispatch(comp, currentRunning);
-            currentRunning = cpu.getPCB();
-        }
+        dispatch(comp, currentRunning);
+        currentRunning = cpu.getPCB();
 
         // 5. Ejecutar 1 ciclo si hay un proceso en CPU
+        ProcessControlBlock executedThisCycle = null;
         if (currentRunning != null && currentRunning.getState() == ProcessState.EJECUTANDO) {
+            executedThisCycle = currentRunning;
+            comp.incrementarCicloActivo();
+            if (currentRunning.getStartCycle() < 0) currentRunning.setStartCycle(currentCycle);
             if (currentRunning.getType() == ProcessType.PRODUCER
                     || currentRunning.getType() == ProcessType.CONSUMER) {
                 Buffer targetBuf = findBufferById(
@@ -416,8 +592,7 @@ public class ComputerKernel {
                     if (!continueRunning) {
                         if (currentRunning.getState() == ProcessState.BLOQUEADO) {
                             blockProcess(comp, currentRunning);
-                        } else if (currentRunning.getState() == ProcessState.SALIENTE) {
-                            terminateProcess(comp, currentRunning);
+                            event(proceso(currentRunning) + " se bloqueó: " + motivo(currentRunning));
                         }
                     }
                 } else {
@@ -425,20 +600,50 @@ public class ComputerKernel {
                 }
             } else {
                 currentRunning.executeOneCycle(currentCycle);
+
+                // Verificar si un proceso IO_BOUND debe bloquearse tras este ciclo de CPU
+                if (currentRunning.getType() == ProcessType.IO_BOUND
+                        && currentRunning.getIoInterval() > 0
+                        && currentRunning.getState() == ProcessState.EJECUTANDO) {
+                    int countdown = currentRunning.getIoCycleCountdown() - 1;
+                    if (countdown <= 0) {
+                        // Bloquear: el ioCycleCountdown pasa a ioDuration para el desbloqueo
+                        currentRunning.setIoCycleCountdown(currentRunning.getIoDuration());
+                        blockProcess(comp, currentRunning);
+                        currentRunning.setBlockReason(BlockReason.WAITING_IO);
+                        event(proceso(currentRunning) + " se bloqueó: " + motivo(currentRunning));
+                    } else {
+                        currentRunning.setIoCycleCountdown(countdown);
+                    }
+                }
             }
 
-            // Sincronizar registros hardware — solo el kernel toca la CPU
+            // Sincronizar registros hardware mediante la interfaz común de reloj (ARC-22)
             if (cpu.getPCB() != null) {
-                cpu.setPC(currentRunning.getProgramCounter());
-                cpu.setMAR(currentRunning.getMemoryAddressRegister());
-                cpu.setMode(currentRunning.getMode());
+                cpu.tick(currentCycle);
             }
 
             // Verificar terminación natural
             if (currentRunning.getState() == ProcessState.SALIENTE
-                    || currentRunning.getRemainingTime() <= 0) {
+                    || (currentRunning.getType() != ProcessType.PRODUCER
+                        && currentRunning.getType() != ProcessType.CONSUMER
+                        && currentRunning.getRemainingTime() <= 0)) {
                 terminateProcess(comp, currentRunning);
             }
+        }
+
+        // 5.5 Tiempo de espera: todo proceso admitido que no ejecutó en este ciclo (listo o bloqueado)
+        for (int i = 0; i < this.processList.size(); i++) {
+            ProcessControlBlock w = this.processList.get(i);
+            if (w != null && w != executedThisCycle
+                    && (w.getState() == ProcessState.LISTO || w.getState() == ProcessState.BLOQUEADO)) {
+                w.incrementWaitingTime();
+            }
+        }
+
+        // 6. Avanzar componentes de hardware auxiliares que reaccionan al reloj (ARC-22)
+        if (comp.getDma() != null) {
+            comp.getDma().tick(currentCycle);
         }
     }
 
@@ -454,6 +659,9 @@ public class ComputerKernel {
                     terminateProcess(comp, p);
                 }
             }
+        }
+        if (this.currentPolicy == SchedulingPolicyType.EDF) {
+            reorderReadyQueue(this.currentPolicy, false);
         }
     }
 
@@ -473,16 +681,58 @@ public class ComputerKernel {
         }
     }
 
+    /**
+     * Avanza el contador de bloqueo IO para procesos IO-bound bloqueados por WAITING_IO.
+     * Cuando ioCycleCountdown llega a 0, el proceso vuelve a la cola de listos
+     * y su contador se resetea al ioInterval para el próximo ciclo IO.
+     */
+    private void advanceIOBlocks() {
+        for (int i = 0; i < this.processList.size(); i++) {
+            ProcessControlBlock p = this.processList.get(i);
+            if (p != null
+                    && p.getState() == ProcessState.BLOQUEADO
+                    && p.getBlockReason() == BlockReason.WAITING_IO) {
+                int countdown = p.getIoCycleCountdown() - 1;
+                p.setIoCycleCountdown(countdown);
+                if (countdown <= 0 && p.getState() != ProcessState.SALIENTE) {
+                    // Desbloquear: volver a READY y preparar countdown para el próximo IO
+                    p.setIoCycleCountdown(p.getIoInterval());
+                    blockedToReady(p);
+                }
+            }
+        }
+    }
+
+    /**
+     * Mueve a la cola de listos todos los procesos que wakeUpProcess ya marcó como LISTO
+     * pero que físicamente aún pueden estar en blockedQueue.
+     * Mantiene la separación de capas: sync solo modifica el estado del PCB,
+     * el kernel es el único responsable de gestionar las colas.
+     */
+    private void flushWokenProcesses() {
+        int size = this.blockedQueue.size();
+        for (int i = 0; i < size; i++) {
+            ProcessControlBlock p = this.blockedQueue.dequeue();
+            if (p == null) continue;
+            if (p.getState() == ProcessState.LISTO) {
+                // El proceso fue despertado por wakeUpProcess: moverlo a readyQueue
+                this.readyQueue.removeElement(p); // Prevenir duplicados
+                this.readyQueue.enqueue(p);
+                event(proceso(p) + " despertó y pasó a listos");
+            } else {
+                // El proceso sigue bloqueado: volver a encolarlo
+                this.blockedQueue.enqueue(p);
+            }
+        }
+        reorderReadyQueue(this.currentPolicy, false);
+    }
+
     private void cleanupProcessResources(ProcessControlBlock pcb, MyLinkedList<Buffer> buffers) {
         if (pcb == null) return;
         Buffer buf = findBufferById(parseBufferId(pcb.getTargetBufferId()), buffers);
-        if (buf != null) {
-            buf.removeWaitingProcess(pcb);
-            if ((pcb.getSyncStage() == 2 || pcb.getSyncStage() == 3) && buf.getMutex() != null) {
-                buf.getMutex().release();
-                ProducerConsumerDriver.wakeUpProcess(buf.pollWaitingMutex());
-            }
-        }
+        if (buf == null) return;
+
+        buf.cleanupPermits(pcb);
     }
 
     private Buffer findBufferById(int id, MyLinkedList<Buffer> buffers) {

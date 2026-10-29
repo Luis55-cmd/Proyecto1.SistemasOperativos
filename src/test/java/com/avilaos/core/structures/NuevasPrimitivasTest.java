@@ -1,10 +1,10 @@
 package com.avilaos.core.structures;
 
-import java.util.Comparator;
+// Se utiliza MyComparator propio en lugar de java.util.Comparator
 
 /**
  * Pruebas de verificación de métodos oficiales de Fase 1:
- * - MyLinkedList: add, addFirst, remove, get, contains, sort, for-each (Iterable)
+ * - MyLinkedList: add, addFirst, remove, get, contains, sort, iterador manual
  * - MyQueue: enqueue, size()
  * - MyStack: peek()
  */
@@ -60,7 +60,12 @@ public class NuevasPrimitivasTest {
         list.add(30);
         list.add(20);
 
-        list.sort(Comparator.naturalOrder());
+        list.sort(new MyLinkedList.MyComparator<Integer>() {
+            @Override
+            public int compare(Integer o1, Integer o2) {
+                return Integer.compare(o1, o2);
+            }
+        });
 
         if (list.size() != 4) throw new AssertionError("size incorrecto tras sort");
         if (list.get(0) != 10 || list.get(1) != 20 || list.get(2) != 30 || list.get(3) != 40) {
@@ -75,12 +80,13 @@ public class NuevasPrimitivasTest {
         list.add("tres");
 
         StringBuilder sb = new StringBuilder();
-        for (String item : list) {
-            sb.append(item).append(",");
+        MyLinkedList<String>.MyLinkedListIterator iter = list.iterator();
+        while (iter.hasNext()) {
+            sb.append(iter.next()).append(",");
         }
 
         if (!"uno,dos,tres,".equals(sb.toString())) {
-            throw new AssertionError("for-each (Iterable) fallo: " + sb);
+            throw new AssertionError("iterador fallo: " + sb);
         }
     }
 

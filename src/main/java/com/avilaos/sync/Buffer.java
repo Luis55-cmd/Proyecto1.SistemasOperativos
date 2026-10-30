@@ -338,7 +338,7 @@ public class Buffer {
      */
     public synchronized int getTheoreticalValue(SemaphoreKind kind) {
         return switch (kind) {
-            case MUTEX -> mutex.availablePermits() - waitingMutex.size();
+            case MUTEX -> mutex.availablePermits();
             case VACIOS -> vacios.availablePermits() - waitingVacios.size();
             case LLENOS -> llenos.availablePermits() - waitingLlenos.size();
         };

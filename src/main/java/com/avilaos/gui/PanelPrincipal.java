@@ -323,11 +323,11 @@ public class PanelPrincipal extends JPanel {
                 return;
             }
             
-            spinnerAlmacenamiento.commitEdit();
-            spinnerLatenciaBuffer.commitEdit();
+            int capacidad = EditorProceso.numeroVisible(spinnerAlmacenamiento); spinnerAlmacenamiento.setValue(capacidad);
+            int latencia = EditorProceso.numeroVisible(spinnerLatenciaBuffer); spinnerLatenciaBuffer.setValue(latencia);
             
-            int capacidad = (Integer) spinnerAlmacenamiento.getValue();
-            int latencia = (Integer) spinnerLatenciaBuffer.getValue();
+            // Valores ya validados y asignados arriba
+            // (capacidad y latencia listos)
             resultadoBuffer.setText("Creando buffer…");
             GuiRequest.model(controller, () -> {
                 Buffer b=controller.createBuffer(compSeleccionado.id(), capacidad, latencia);
@@ -407,7 +407,14 @@ public class PanelPrincipal extends JPanel {
             return;
         }
         String name=nombreComputador.getText();
-        int quantum=(Integer)spinnerQuantum.getValue();
+        int quantum;
+        try {
+            quantum = politicaSeleccionada == SchedulingPolicyType.ROUND_ROBIN ? EditorProceso.numeroVisible(spinnerQuantum) : (Integer) spinnerQuantum.getValue();
+            spinnerQuantum.setValue(quantum);
+        } catch (IllegalArgumentException ex) {
+            resultadoComputador.setText("El quantum debe ser un entero entre 1 y 99.");
+            return;
+        }
         SchedulingPolicyType policy=politicaSeleccionada;
         resultadoComputador.setText("Creando computador…");
         GuiRequest.model(controller, () -> {

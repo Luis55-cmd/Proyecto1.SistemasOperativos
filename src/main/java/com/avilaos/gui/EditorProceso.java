@@ -152,7 +152,7 @@ public class EditorProceso extends JPanel {
     }
 
     /** Lee el texto visible para actualizar el cálculo también antes de perder el foco. */
-    private static int numeroVisible(JSpinner spinner) {
+    static int numeroVisible(JSpinner spinner) {
         String text = ((JSpinner.DefaultEditor) spinner.getEditor()).getTextField().getText().trim();
         java.text.NumberFormat formato = java.text.NumberFormat.getIntegerInstance();
         java.text.ParsePosition posicion = new java.text.ParsePosition(0);
@@ -251,19 +251,19 @@ public class EditorProceso extends JPanel {
         ProcessType tipo = (ProcessType) comboTipoProceso.getSelectedItem();
         boolean sincronizado = tipo == ProcessType.PRODUCER || tipo == ProcessType.CONSUMER;
         try {
-            spinnerPrioridad.commitEdit();
-            spinnerDeadline.commitEdit();
+            spinnerPrioridad.setValue(numeroVisible(spinnerPrioridad));
+            spinnerDeadline.setValue(numeroVisible(spinnerDeadline));
             if (sincronizado) {
-                spinnerCiclosOperacion.commitEdit();
-                spinnerElementos.commitEdit();
+                spinnerCiclosOperacion.setValue(numeroVisible(spinnerCiclosOperacion));
+                spinnerElementos.setValue(numeroVisible(spinnerElementos));
             } else {
-                spinnerInstrucciones.commitEdit();
+                spinnerInstrucciones.setValue(numeroVisible(spinnerInstrucciones));
                 if (tipo == ProcessType.IO_BOUND) {
-                    spinnerIoInterval.commitEdit();
-                    spinnerIoDuration.commitEdit();
+                    spinnerIoInterval.setValue(numeroVisible(spinnerIoInterval));
+                    spinnerIoDuration.setValue(numeroVisible(spinnerIoDuration));
                 }
             }
-        } catch (ParseException error) {
+        } catch (IllegalArgumentException error) {
             mensaje.setText("Revisa los valores numéricos del proceso.");
             return;
         }

@@ -165,7 +165,7 @@ public final class VistaSimulacionAlternativa extends JPanel {
         aplicarLatencia.addActionListener(e -> {
             int fila = buffers.getSelectedRow();
             if (fila < 0 || fila >= view.buffers.size()) return;
-            try { latencia.commitEdit(); } catch (java.text.ParseException ex) { esperaBuffers.setText("Escribe una latencia válida."); return; }
+            try { latencia.setValue(EditorProceso.numeroVisible(latencia)); } catch (IllegalArgumentException ex) { esperaBuffers.setText("Escribe una latencia válida."); return; }
             int id = view.buffers.get(fila).id(), valor = (Integer) latencia.getValue();
             GuiRequest.control(controller, () -> controller.setBufferLatency(id, valor));
         });

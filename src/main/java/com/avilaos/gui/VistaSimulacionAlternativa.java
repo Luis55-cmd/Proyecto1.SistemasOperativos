@@ -276,7 +276,7 @@ public final class VistaSimulacionAlternativa extends JPanel {
             add(tarjetaCPU); add(Box.createVerticalStrut(18));
             String[] nombres={"Nuevos", "Listos", "Bloqueados", "Terminados"};
             for(int i=0;i<4;i++) {
-                modelos[i]=tabla("ID", "Nombre", "Tipo", "Prioridad", "RAM requerida", "Restante", "Deadline", "PC", "Motivo");
+                modelos[i]=tabla("ID", "Nombre", "Tipo", "Prioridad", "RAM requerida", "Deadline", "T. Restante", "PC", "Motivo");
                 add(texto(nombres[i], 15, TINTA, true)); add(Box.createVerticalStrut(6));
                 JTable t=new JTable(modelos[i]); t.setRowHeight(28); t.setBackground(PAPEL); t.setForeground(TINTA);
                 JScrollPane scroll=new JScrollPane(t); scroll.setColumnHeaderView(t.getTableHeader()); scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER); desplazarVistaDesdeTabla(scroll);

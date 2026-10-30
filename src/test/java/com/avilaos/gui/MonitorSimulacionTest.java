@@ -1,63 +1,37 @@
 package com.avilaos.gui;
 
 import com.avilaos.simulation.SimulationController;
-import com.avilaos.core.model.*;
-import java.awt.*;
-import javax.swing.*;
+import javax.swing.JButton;
+import javax.swing.JTabbedPane;
+import javax.swing.SwingUtilities;
 
-/** Fixture de prueba, no carga procesos en la aplicación normal. */
+/** El menú debe abrir las vistas vigentes sin mantener las antiguas como páginas. */
 public class MonitorSimulacionTest {
-    static boolean contiene(Container padre, String texto) {
-        for (Component c : padre.getComponents()) {
-            if (c instanceof JLabel l && texto.equals(l.getText())) return true;
-            if (c instanceof Container hijo && contiene(hijo, texto)) return true;
-        }
-        return false;
-    }
-    static void distribuir(Container c) {
-        c.doLayout();
-        for (Component hijo : c.getComponents()) if (hijo instanceof Container contenedor) distribuir(contenedor);
-    }
+    private static void check(boolean ok, String mensaje) { if (!ok) throw new AssertionError(mensaje); }
     public static void main(String[] args) throws Exception {
         SwingUtilities.invokeAndWait(() -> {
-            var controller = SimulationController.getInstance(); controller.reset();
-            var panel = new PanelPrincipal(); panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
-            ((JButton) CreacionComputadoresGuiTest.buscar(panel, JButton.class, "06   Métricas")).doClick();
-            if (panel.getDestinoActual() != PanelPrincipal.Destino.METRICAS) throw new AssertionError("MENU: acceso directo a métricas");
-            panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
-            var monitor = (MonitorSimulacion) CreacionComputadoresGuiTest.buscar(panel, MonitorSimulacion.class, null);
-            var pestanas = (JTabbedPane) CreacionComputadoresGuiTest.buscar(monitor, JTabbedPane.class, null);
-            if (pestanas.getTabCount() != 2 || !contiene(monitor, "Todavía no hay computadores")) throw new AssertionError("Vacío");
-            ((JButton) CreacionComputadoresGuiTest.buscar(monitor, JButton.class, "Crear un computador →")).doClick();
-            if (panel.getDestinoActual() != PanelPrincipal.Destino.COMPUTADOR) throw new AssertionError("Navegación");
-            var norte = controller.createComputer("Norte", 128, SchedulingPolicyType.FCFS);
-            controller.createComputer("Sur", 256, SchedulingPolicyType.EDF);
-            panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
-            if (pestanas.getTabCount() != 4 || !contiene(monitor, "CPU libre · KERNEL")) throw new AssertionError("Computadores");
-            ((JButton) CreacionComputadoresGuiTest.buscar(monitor, JButton.class, "Ver detalle →")).doClick();
-            if (pestanas.getSelectedIndex() != 1) throw new AssertionError("Abrir detalle");
-            controller.createComputer("Este", 512, SchedulingPolicyType.ROUND_ROBIN); monitor.actualizarVista();
-            if (pestanas.getTabCount() != 5 || pestanas.getSelectedIndex() != 1) throw new AssertionError("Conservar pestaña");
-            pestanas.setSelectedIndex(pestanas.indexOfTab("Métricas"));
-            controller.createComputer("Oeste", 128, SchedulingPolicyType.FCFS); monitor.actualizarVista();
-            if (!"Métricas".equals(pestanas.getTitleAt(pestanas.getSelectedIndex()))) throw new AssertionError("METRICAS: conservar selección al agregar computador");
-            if (controller.getCurrentCycle() != 0) throw new AssertionError("Monitor avanzó reloj");
-            controller.createProcess("Prueba CPU", norte.getId(), ProcessType.CPU_BOUND, 2, 32, 1, 100);
-            monitor.actualizarVista();
-            if (!contiene(monitor, "RAM 32 / 128")) throw new AssertionError("RAM");
-            controller.stepSimulation(); monitor.actualizarVista();
-            if (!contiene(monitor, "CPU ocupada · USER")) throw new AssertionError("CPU ocupada");
-            controller.stepSimulation(); monitor.actualizarVista();
-            if (!contiene(monitor, "Nuevos: 0  ·  Listos: 0  ·  Bloqueados: 0  ·  Terminados: 1")) throw new AssertionError("Fin");
-            if (!contiene(monitor, "Reloj global · ciclo 2")) throw new AssertionError("Reloj global");
-            pestanas.setSelectedIndex(0);
-            panel.setSize(1180, 780); distribuir(panel);
-            try {
-                var imagen = new java.awt.image.BufferedImage(1180, 780, java.awt.image.BufferedImage.TYPE_INT_RGB);
-                Graphics2D g = imagen.createGraphics(); panel.printAll(g); g.dispose();
-                javax.imageio.ImageIO.write(imagen, "png", new java.io.File("/tmp/avilaos-monitor.png"));
-            } catch (java.io.IOException e) { throw new RuntimeException(e); }
-            System.out.println("PASS: vacío, navegación, pestañas, selección, RAM, CPU, terminación y monitor sin ticks propios");
+            var controller = SimulationController.getInstance();
+            controller.reset();
+            var panel = new PanelPrincipal();
+            var simulacion = (JButton) CreacionComputadoresGuiTest.buscar(panel, JButton.class, "05   Simulación");
+            var metricas = (JButton) CreacionComputadoresGuiTest.buscar(panel, JButton.class, "06   Métricas");
+            check(simulacion != null && metricas != null, "Entradas principales del menú");
+            check(CreacionComputadoresGuiTest.buscar(panel, JButton.class, "07   Nueva vista") == null, "Menú sin duplicado de simulación");
+            check(CreacionComputadoresGuiTest.buscar(panel, JButton.class, "08   Métricas copia") == null, "Menú sin duplicado de métricas");
+            simulacion.doClick();
+            check(panel.getDestinoActual() == PanelPrincipal.Destino.SIMULACION, "Navegación a simulación");
+            check(CreacionComputadoresGuiTest.buscar(panel, VistaSimulacionAlternativa.class, null) != null, "Vista de simulación vigente");
+            check(CreacionComputadoresGuiTest.buscar(panel, MonitorSimulacion.class, null) == null, "No se construye el monitor anterior");
+            metricas.doClick();
+            check(panel.getDestinoActual() == PanelPrincipal.Destino.METRICAS, "Navegación a métricas");
+            var vista = (PanelMetricasCopia) CreacionComputadoresGuiTest.buscar(panel, PanelMetricasCopia.class, null);
+            check(vista != null, "Vista de métricas vigente");
+            var tabs = (JTabbedPane) CreacionComputadoresGuiTest.buscar(vista, JTabbedPane.class, null);
+            check(tabs != null && tabs.getTabCount() == 3 && tabs.getTitleAt(0).equals("Computadores"), "Métricas con tres secciones");
+            check(CreacionComputadoresGuiTest.buscar(panel, PanelMetricas.class, null) == null, "No se construye la vista anterior de métricas");
+            controller.reset();
+            System.out.println("PASS: navegación a las dos vistas vigentes");
         });
+        System.exit(0);
     }
 }

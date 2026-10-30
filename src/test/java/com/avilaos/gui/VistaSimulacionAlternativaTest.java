@@ -24,7 +24,7 @@ public class VistaSimulacionAlternativaTest {
             c.createBuffer(a.getId(),2,3);
             c.createProcess("Consumidor",a.getId(),ProcessType.CONSUMER,6,10,1,100,"1",1,1);
             var panel=new PanelPrincipal();
-            panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION_NUEVA);
+            panel.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
             vista=(VistaSimulacionAlternativa) CreacionComputadoresGuiTest.buscar(panel,VistaSimulacionAlternativa.class,null);
             check(vista!=null,"No existe la vista alternativa");
             var tabs=(JTabbedPane) campo("vistas");

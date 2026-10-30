@@ -30,7 +30,7 @@ public class VistaSimulacionScrollTest {
             var pc=c.createComputer("Equipo",128,SchedulingPolicyType.FCFS);
             for (int i=0;i<30;i++) c.createBuffer(pc.getId(),1,0);
             for (int i=0;i<30;i++) c.createProcess("P"+i,pc.getId(),ProcessType.CPU_BOUND,10,1,1,100);
-            var principal=new PanelPrincipal(); principal.mostrarPanel(PanelPrincipal.Destino.SIMULACION_NUEVA);
+            var principal=new PanelPrincipal(); principal.mostrarPanel(PanelPrincipal.Destino.SIMULACION);
             principal.setSize(1000,760); layout(principal);
             var vista=(VistaSimulacionAlternativa) CreacionComputadoresGuiTest.buscar(principal,VistaSimulacionAlternativa.class,null);
             var tabs=(JTabbedPane) campo(vista,"vistas");

@@ -31,7 +31,7 @@ import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.awt.Dimension;
 
-/** Copia independiente para explorar una nueva distribución de métricas. */
+/** Vista de métricas del sistema, procesos y buffers. */
 public class PanelMetricasCopia extends JPanel {
     /** Métricas que se pueden graficar; el índice 0 (utilización) es la vista por defecto. */
     private static final String[] METRICAS = {

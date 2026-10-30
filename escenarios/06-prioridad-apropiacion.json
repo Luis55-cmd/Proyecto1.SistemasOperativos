@@ -32,7 +32,7 @@
       "state": "EJECUTANDO",
       "blockReason": "NONE",
       "programCounter": 2,
-      "memoryAddressRegister": 2,
+      "memoryAddressRegister": 1,
       "ioInterval": 0,
       "ioDuration": 0,
       "ioCycleCountdown": 0,

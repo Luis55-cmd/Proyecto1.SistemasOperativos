@@ -22,7 +22,7 @@ public class LogCompletoYRelojTest {
         SwingUtilities.invokeAndWait(() -> {
             c.reset();
             monitor[0]=new MonitorSimulacion(c,()->{});
-            vista[0]=new VistaSimulacionAlternativa(c,monitor[0]);
+            vista[0]=new VistaSimulacionAlternativa(c);
             c.addLogListener(s -> { if (s.contains("FIN-PRUEBA-LOG")) recibido.countDown(); });
         });
         // El EDT no puede procesar la cola hasta que termine este bloque.

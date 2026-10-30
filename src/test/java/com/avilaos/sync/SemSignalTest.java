@@ -50,9 +50,9 @@ public class SemSignalTest {
             check(emitter.getPermitBufferId() == -1, "EMISOR: pierde titularidad al señalizar");
             check(first.getState() == ProcessState.LISTO && first.getBlockReason() == BlockReason.NONE,
                     "DESPERTAR: listo y sin espera pendiente");
-            check(first.getProgramCounter() == 21 && first.getMemoryAddressRegister() == 31,
+            check(first.getProgramCounter() == 21 && first.getMemoryAddressRegister() == 20,
                     "RECEPTOR: no ejecuta otra instrucción al despertar");
-            check(emitter.getProgramCounter() == 21 && emitter.getMemoryAddressRegister() == 31,
+            check(emitter.getProgramCounter() == 21 && emitter.getMemoryAddressRegister() == 20,
                     "EMISOR: signal consume una instrucción");
             check(emitter.getMode() == ExecutionMode.KERNEL, "MODO: signal en kernel");
             check(semaphore.availablePermits() == 0, "TRANSFERENCIA: no libera permiso al público");

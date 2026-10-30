@@ -29,7 +29,6 @@ public class EditorProcesoFormularioTest {
         SwingUtilities.invokeAndWait(() -> {
             ((JComboBox<ProcessType>) campo("comboTipoProceso")).setSelectedItem(tipo);
             ((JTextField) campo("campoNombre")).setText(nombre);
-            numero("spinnerMemoria", 17);
             numero("spinnerDeadline", 90);
             numero("spinnerInstrucciones", 12);
             numero("spinnerIoInterval", 4);
@@ -46,16 +45,35 @@ public class EditorProcesoFormularioTest {
             var pc = c.createComputer("Equipo", 128, SchedulingPolicyType.FCFS);
             c.createBuffer(pc.getId(), 2);
             editor = new EditorProceso(() -> {});
+            var memoria = (JTextField) campo("memoriaCalculada");
+            check(!memoria.isEditable() && memoria.getText().equals("10"), "RAM inicial no editable");
+            var instrucciones = ((JSpinner.DefaultEditor) ((JSpinner) campo("spinnerInstrucciones")).getEditor()).getTextField();
+            instrucciones.setText("24");
+            check(memoria.getText().equals("24"), "RAM CPU cambia mientras se escribe");
+            instrucciones.setText("");
+            check(memoria.getText().equals("—"), "Entrada incompleta no muestra cálculo anterior");
+            instrucciones.setText("10");
+            ((JComboBox<ProcessType>) campo("comboTipoProceso")).setSelectedItem(ProcessType.IO_BOUND);
+            numero("spinnerIoInterval", 3);
+            check(memoria.getText().equals("13"), "10 de trabajo más 3 solicitudes de E/S");
+            ((JComboBox<ProcessType>) campo("comboTipoProceso")).setSelectedItem(ProcessType.PRODUCER);
+            numero("spinnerCiclosOperacion", 3);
+            numero("spinnerElementos", 4);
+            check(memoria.getText().equals("32"), "RAM de productor en vivo");
+            ((JComboBox<ProcessType>) campo("comboTipoProceso")).setSelectedItem(ProcessType.CONSUMER);
+            check(memoria.getText().equals("32"), "RAM de consumidor en vivo");
         });
         enviar(ProcessType.CPU_BOUND, "CPU");
         enviar(ProcessType.IO_BOUND, "IO");
         enviar(ProcessType.PRODUCER, "Productor");
         enviar(ProcessType.CONSUMER, "Consumidor");
         check(c.getAllProcesses().size() == 4, "Se esperaban cuatro procesos");
+        check(c.getComputers().get(0).getMemoryManager().getUsedMemory() == 70, "RAM real = buffer 2 + 12 + 14 + 21 + 21");
         for (int i = 0; i < 4; i++) {
             ProcessControlBlock p = c.getAllProcesses().get(i);
-            check(p.getRequiredMemory() == 17 && p.getDeadline() == 90, "Memoria o deadline " + p.getName());
-            check(p.getTotalInstructions() == (i < 2 ? 12 : 21), "Instrucciones " + p.getName());
+            int esperado = i == 0 ? 12 : i == 1 ? 14 : 21;
+            check(p.getRequiredMemory() == esperado && p.getDeadline() == 90, "Memoria o deadline " + p.getName());
+            check(p.getTotalInstructions() == esperado, "Instrucciones " + p.getName());
             if (i == 1) check(p.getIoInterval() == 4 && p.getIoDuration() == 3, "Parámetros E/S");
             if (i >= 2) check("1".equals(p.getTargetBufferId()) && p.getCyclesPerOperation() == 2
                     && p.getRequiredElements() == 3, "Parámetros buffer");
@@ -63,7 +81,7 @@ public class EditorProcesoFormularioTest {
         SwingUtilities.invokeAndWait(() -> {
             var tabla = (DefaultTableModel) campo("procesosVisibles");
             check(tabla.getRowCount() == 4, "Tabla no muestra los cuatro procesos");
-            check(tabla.getValueAt(0, 1).equals("CPU") && tabla.getValueAt(0, 5).equals(17), "Fila CPU o memoria");
+            check(tabla.getValueAt(0, 1).equals("CPU") && tabla.getValueAt(0, 5).equals(12), "Fila CPU o memoria");
             check(tabla.getValueAt(1, 9).toString().contains("cada 4"), "Faltan parámetros E/S");
             check(tabla.getValueAt(2, 9).toString().contains("3 elementos"), "Faltan parámetros de productor");
             ((JTextField) campo("campoNombre")).setText("   ");
@@ -96,8 +114,11 @@ public class EditorProcesoFormularioTest {
         check(c.getAllProcesses().size() == 1, "No creó el caso de frontera válido");
         ProcessControlBlock io = c.getAllProcesses().get(0);
         for (int i = 0; i < 9; i++) c.stepSimulation();
-        check(io.getProgramCounter() == 9 && io.getBlockReason() == BlockReason.WAITING_IO,
-                "El proceso válido no solicitó E/S tras nueve instrucciones");
+        check(io.getProgramCounter() == 9 && io.getBlockReason() == BlockReason.NONE,
+                "El trabajo CPU debe completarse antes de la instrucción de E/S");
+        c.stepSimulation();
+        check(io.getProgramCounter() == 10 && io.getBlockReason() == BlockReason.WAITING_IO,
+                "El proceso válido no ejecutó la solicitud de E/S");
         System.out.println("PASS: cuatro tipos y validación I/O bound, incluido bloqueo en el límite");
         c.reset();
         System.exit(0);

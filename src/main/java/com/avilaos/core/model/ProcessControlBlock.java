@@ -155,6 +155,10 @@ public class ProcessControlBlock {
     private int ioDuration = 0;
     /** Contador interno: ciclos restantes hasta el próximo evento IO (ejecución o bloqueo). */
     private int ioCycleCountdown = 0;
+    private boolean ioRequestInstruction;
+
+    public boolean isIoRequestInstruction() { return ioRequestInstruction; }
+    public void setIoRequestInstruction(boolean enabled) { ioRequestInstruction = enabled; }
 
     /**
      * Constructor por defecto: asigna ID único generado automáticamente.

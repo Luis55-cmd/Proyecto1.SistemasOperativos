@@ -481,6 +481,7 @@ public final class MonitorSimulacion extends JPanel {
                     o.addProperty("state", admitted ? "LISTO" : "NUEVO"); o.addProperty("blockReason", "NONE");
                     o.addProperty("programCounter", 0); o.addProperty("memoryAddressRegister", 0);
                     o.addProperty("ioInterval", p.getIoInterval()); o.addProperty("ioDuration", p.getIoDuration());
+                    o.addProperty("ioRequestInstruction", p.isIoRequestInstruction());
                     o.addProperty("ioCycleCountdown", p.getIoInterval());
                     o.addProperty("targetBufferId", p.getTargetBufferId());
                     o.addProperty("cyclesPerOperation", p.getCyclesPerOperation());
@@ -558,6 +559,7 @@ public final class MonitorSimulacion extends JPanel {
                 pcb.setMemoryAddressRegister(p.get("memoryAddressRegister").getAsInt());
                 pcb.setIoInterval(p.get("ioInterval").getAsInt());
                 pcb.setIoDuration(p.get("ioDuration").getAsInt());
+                pcb.setIoRequestInstruction(p.has("ioRequestInstruction") && p.get("ioRequestInstruction").getAsBoolean());
                 pcb.setIoCycleCountdown(p.get("ioCycleCountdown").getAsInt());
                 com.google.gson.JsonElement target = p.get("targetBufferId");
                 pcb.setTargetBufferId(target == null || target.isJsonNull() ? null : target.getAsString());

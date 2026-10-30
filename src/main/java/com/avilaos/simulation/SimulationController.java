@@ -8,6 +8,7 @@ import com.avilaos.core.model.ExecutionMode;
 import com.avilaos.core.model.ProcessState;
 import com.avilaos.core.model.ProcessControlBlock;
 import com.avilaos.core.model.ProcessType;
+import com.avilaos.core.model.ProcessSizing;
 import com.avilaos.core.model.SchedulingPolicyType;
 import com.avilaos.core.structures.MyLinkedList;
 import com.avilaos.core.structures.MyQueue;
@@ -253,6 +254,26 @@ public class SimulationController implements IClockTickable {
             notifyGUI();
         }
 
+        } finally { StateAccess.exit(); }
+    }
+
+    /** Crea un proceso del formulario usando el mismo cálculo para instrucciones y RAM. */
+    public ProcessControlBlock createConfiguredProcess(String name, int computerId, ProcessType type,
+            int cpuWork, int priority, int deadline, int ioInterval, int ioDuration,
+            String buffer, int cyclesPerOperation, int elements) {
+        StateAccess.enter();
+        try {
+            if (type == ProcessType.IO_BOUND && ioDuration < 1)
+                throw new IllegalArgumentException("La duración de E/S debe ser positiva");
+            int total = ProcessSizing.instructions(type, cpuWork, ioInterval, cyclesPerOperation, elements);
+            ProcessControlBlock pcb = (type == ProcessType.PRODUCER || type == ProcessType.CONSUMER)
+                    ? createProcess(name, computerId, type, total, total, priority, deadline, buffer, cyclesPerOperation, elements)
+                    : createProcess(name, computerId, type, total, total, priority, deadline, ioInterval, ioDuration);
+            if (pcb != null && type == ProcessType.IO_BOUND) {
+                pcb.setIoRequestInstruction(true);
+                notifyGUI();
+            }
+            return pcb;
         } finally { StateAccess.exit(); }
     }
 

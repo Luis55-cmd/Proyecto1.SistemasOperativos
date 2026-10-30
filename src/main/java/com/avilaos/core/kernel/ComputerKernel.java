@@ -599,14 +599,16 @@ public class ComputerKernel {
                     currentRunning.executeOneCycle(currentCycle);
                 }
             } else {
+                boolean solicitudIO = currentRunning.getType() == ProcessType.IO_BOUND
+                        && currentRunning.isIoRequestInstruction() && currentRunning.getIoCycleCountdown() == 0;
                 currentRunning.executeOneCycle(currentCycle);
 
                 // Verificar si un proceso IO_BOUND debe bloquearse tras este ciclo de CPU
                 if (currentRunning.getType() == ProcessType.IO_BOUND
                         && currentRunning.getIoInterval() > 0
                         && currentRunning.getState() == ProcessState.EJECUTANDO) {
-                    int countdown = currentRunning.getIoCycleCountdown() - 1;
-                    if (countdown <= 0) {
+                    int countdown = solicitudIO ? 0 : currentRunning.getIoCycleCountdown() - 1;
+                    if (countdown <= 0 && (!currentRunning.isIoRequestInstruction() || solicitudIO)) {
                         // Bloquear: el ioCycleCountdown pasa a ioDuration para el desbloqueo
                         currentRunning.setIoCycleCountdown(currentRunning.getIoDuration());
                         blockProcess(comp, currentRunning);

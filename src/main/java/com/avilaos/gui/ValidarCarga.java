@@ -72,6 +72,9 @@ final class ValidarCarga {
             int remTime=numero(p,"remainingTime",0); numero(p,"remainingDeadline",0);
             int pc=numero(p,"programCounter",0); int mar=numero(p,"memoryAddressRegister",0);
             numero(p,"ioInterval",0); numero(p,"ioDuration",0); numero(p,"ioCycleCountdown",0);
+            if (p.has("ioRequestInstruction") && (!p.get("ioRequestInstruction").isJsonPrimitive()
+                    || !p.getAsJsonPrimitive("ioRequestInstruction").isBoolean()))
+                throw error("Indicador de instrucción E/S inválido del proceso " + id);
             numero(p,"cyclesPerOperation",0); numero(p,"requiredElements",0); int processed=numero(p,"processedElements",0);
             if(pc==Integer.MAX_VALUE || mar==Integer.MAX_VALUE || processed==Integer.MAX_VALUE
                     || (long)pc+remTime>Integer.MAX_VALUE || (long)mar+remTime>Integer.MAX_VALUE)

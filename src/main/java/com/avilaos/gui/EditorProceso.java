@@ -17,6 +17,7 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import com.avilaos.core.model.ProcessType;
+import com.avilaos.core.model.ProcessSizing;
 import com.avilaos.simulation.SimulationController;
 import static com.avilaos.gui.PanelPrincipal.*;
 
@@ -27,7 +28,8 @@ public class EditorProceso extends JPanel {
     private final JComboBox<ProcessType> comboTipoProceso = new JComboBox<>(ProcessType.values());
     private final JSpinner spinnerPrioridad = numero(1, 1, 10);
     private final JSpinner spinnerDeadline = numero(20, 1, 100000);
-    private final JSpinner spinnerMemoria = numero(10, 1, 1000000);
+    private final JTextField memoriaCalculada = new JTextField();
+    private final JLabel detalleCalculo = texto(" ", 12, GRIS, false);
     private final JSpinner spinnerInstrucciones = numero(10, 1, 1000000);
     private final JSpinner spinnerIoInterval = numero(3, 1, 10000);
     private final JSpinner spinnerIoDuration = numero(2, 1, 10000);
@@ -57,7 +59,7 @@ public class EditorProceso extends JPanel {
         super(new BorderLayout());
         JPanel pagina = pagina("PROCESOS", "Crear proceso", "Configura los datos del proceso y selecciona su computador.");
         JPanel formulario = tarjeta();
-        formulario.setMaximumSize(new Dimension(Integer.MAX_VALUE, 420));
+        formulario.setMaximumSize(new Dimension(Integer.MAX_VALUE, 450));
         formulario.setLayout(new BoxLayout(formulario, BoxLayout.Y_AXIS));
         formulario.add(texto("Propiedades del proceso", 20, TINTA, true));
         formulario.add(Box.createVerticalStrut(16));
@@ -78,14 +80,19 @@ public class EditorProceso extends JPanel {
         recursos.setMaximumSize(new Dimension(900, 62));
         recursos.add(campo("Prioridad · 1 baja / 10 alta", spinnerPrioridad));
         recursos.add(campo("Deadline (ticks)", spinnerDeadline));
-        recursos.add(campo("Memoria requerida", spinnerMemoria));
+        memoriaCalculada.setEditable(false);
+        memoriaCalculada.setName("memoriaCalculada");
+        recursos.add(campo("Memoria calculada · unidades", memoriaCalculada));
         formulario.add(recursos);
+        detalleCalculo.setAlignmentX(LEFT_ALIGNMENT);
+        formulario.add(Box.createVerticalStrut(6));
+        formulario.add(detalleCalculo);
         formulario.add(Box.createVerticalStrut(20));
 
         panelInstrucciones.setOpaque(false);
         panelInstrucciones.setAlignmentX(LEFT_ALIGNMENT);
         panelInstrucciones.setMaximumSize(new Dimension(600, 62));
-        panelInstrucciones.add(campo("Total de instrucciones", spinnerInstrucciones));
+        panelInstrucciones.add(campo("Instrucciones de trabajo CPU", spinnerInstrucciones));
         panelInstrucciones.add(new JLabel());
         formulario.add(panelInstrucciones);
         panelIO.setOpaque(false);
@@ -129,10 +136,51 @@ public class EditorProceso extends JPanel {
         pagina.add(lista);
         add(pagina);
 
-        comboTipoProceso.addActionListener(e -> actualizarCampos());
+        comboTipoProceso.addActionListener(e -> { actualizarCampos(); actualizarMemoria(); });
+        for (JSpinner spinner : new JSpinner[]{spinnerInstrucciones, spinnerIoInterval, spinnerIoDuration, spinnerCiclosOperacion, spinnerElementos}) {
+            spinner.addChangeListener(e -> actualizarMemoria());
+            ((JSpinner.DefaultEditor) spinner.getEditor()).getTextField().getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+                public void insertUpdate(javax.swing.event.DocumentEvent e) { actualizarMemoria(); }
+                public void removeUpdate(javax.swing.event.DocumentEvent e) { actualizarMemoria(); }
+                public void changedUpdate(javax.swing.event.DocumentEvent e) { actualizarMemoria(); }
+            });
+        }
         actualizarCampos();
+        actualizarMemoria();
         SimulationController.getInstance().addGUIListener(this::actualizarListas);
         actualizarListas();
+    }
+
+    /** Lee el texto visible para actualizar el cálculo también antes de perder el foco. */
+    private static int numeroVisible(JSpinner spinner) {
+        String text = ((JSpinner.DefaultEditor) spinner.getEditor()).getTextField().getText().trim();
+        java.text.NumberFormat formato = java.text.NumberFormat.getIntegerInstance();
+        java.text.ParsePosition posicion = new java.text.ParsePosition(0);
+        Number numero = formato.parse(text, posicion);
+        if (numero == null || posicion.getIndex() != text.length()) throw new IllegalArgumentException();
+        long valor = numero.longValue();
+        SpinnerNumberModel modelo = (SpinnerNumberModel) spinner.getModel();
+        if (valor < ((Number) modelo.getMinimum()).longValue() || valor > ((Number) modelo.getMaximum()).longValue())
+            throw new IllegalArgumentException();
+        return (int) valor;
+    }
+
+    private void actualizarMemoria() {
+        try {
+            ProcessType tipo = (ProcessType) comboTipoProceso.getSelectedItem();
+            boolean sync = tipo == ProcessType.PRODUCER || tipo == ProcessType.CONSUMER;
+            int trabajo = sync ? 1 : numeroVisible(spinnerInstrucciones);
+            int intervalo = tipo == ProcessType.IO_BOUND ? numeroVisible(spinnerIoInterval) : 0;
+            if (tipo == ProcessType.IO_BOUND) numeroVisible(spinnerIoDuration);
+            int ciclos = sync ? numeroVisible(spinnerCiclosOperacion) : 1;
+            int elementos = sync ? numeroVisible(spinnerElementos) : 1;
+            int total = ProcessSizing.instructions(tipo, trabajo, intervalo, ciclos, elementos);
+            memoriaCalculada.setText(Integer.toString(total));
+            detalleCalculo.setText("Total: " + total + " instrucciones · 1 instrucción = 1 unidad de RAM");
+        } catch (IllegalArgumentException | ArithmeticException error) {
+            memoriaCalculada.setText("—");
+            detalleCalculo.setText("Completa una configuración válida para calcular la memoria.");
+        }
     }
 
     private void actualizarCampos() {
@@ -205,7 +253,6 @@ public class EditorProceso extends JPanel {
         try {
             spinnerPrioridad.commitEdit();
             spinnerDeadline.commitEdit();
-            spinnerMemoria.commitEdit();
             if (sincronizado) {
                 spinnerCiclosOperacion.commitEdit();
                 spinnerElementos.commitEdit();
@@ -227,10 +274,9 @@ public class EditorProceso extends JPanel {
 
         int prioridad = (Integer) spinnerPrioridad.getValue();
         int deadline = (Integer) spinnerDeadline.getValue();
-        int memoria = (Integer) spinnerMemoria.getValue();
         int ciclos = (Integer) spinnerCiclosOperacion.getValue();
         int elementos = (Integer) spinnerElementos.getValue();
-        int instrucciones = sincronizado ? elementos * (ciclos + 5) : (Integer) spinnerInstrucciones.getValue();
+        int instrucciones = sincronizado ? 1 : (Integer) spinnerInstrucciones.getValue();
         int intervaloIO = tipo == ProcessType.IO_BOUND ? (Integer) spinnerIoInterval.getValue() : 0;
         int duracionIO = tipo == ProcessType.IO_BOUND ? (Integer) spinnerIoDuration.getValue() : 0;
         if (tipo == ProcessType.IO_BOUND && instrucciones < 2) {
@@ -245,9 +291,8 @@ public class EditorProceso extends JPanel {
         botonCrear.setEnabled(false);
         mensaje.setText("Creando proceso…");
         GuiRequest.model(controller, () -> {
-            var pcb = sincronizado
-                    ? controller.createProcess(nombre, computador, tipo, instrucciones, memoria, prioridad, deadline, buffer, ciclos, elementos)
-                    : controller.createProcess(nombre, computador, tipo, instrucciones, memoria, prioridad, deadline, intervaloIO, duracionIO);
+            var pcb = controller.createConfiguredProcess(nombre, computador, tipo, instrucciones, prioridad, deadline,
+                    intervaloIO, duracionIO, buffer, ciclos, elementos);
             if (pcb == null) return "No se pudo crear el proceso; revisa los parámetros y el log.";
             return "Proceso '" + nombre + "' creado: " + pcb.getState() + " en computador " + pcb.getComputerId();
         }, resultado -> { mensaje.setText(resultado); botonCrear.setEnabled(true); },

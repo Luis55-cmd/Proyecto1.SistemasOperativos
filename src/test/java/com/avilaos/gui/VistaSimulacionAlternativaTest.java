@@ -59,6 +59,16 @@ public class VistaSimulacionAlternativaTest {
             check(c.getCurrentCycle()==0 && c.getComputers().isEmpty(),"El botón no reinició la simulación");
             check(((DefaultTableModel) campo("modeloBuffers")).getRowCount()==0,"Reset no limpió buffers");
             check(((JTabbedPane) campo("vistas")).getTabCount()==1,"Reset no limpió computadores");
+            check(!((JButton) campo("iniciar")).isEnabled() && !((JButton) campo("paso")).isEnabled(), "Con 0 computadores no debe permitir iniciar");
+            c.createComputer("Unico", 128, SchedulingPolicyType.FCFS);
+            vista.revalidate();
+        });
+        SwingUtilities.invokeAndWait(() -> {
+            check(!((JButton) campo("iniciar")).isEnabled() && !((JButton) campo("paso")).isEnabled(), "Con 1 computador no debe permitir iniciar");
+            c.createComputer("Segundo", 128, SchedulingPolicyType.FCFS);
+        });
+        SwingUtilities.invokeAndWait(() -> {
+            check(((JButton) campo("iniciar")).isEnabled() && ((JButton) campo("paso")).isEnabled(), "Con 2 computadores debe permitir iniciar");
         });
         System.out.println("PASS: vista paralela, buffers, espera, latencia y reinicio");
         System.exit(0);

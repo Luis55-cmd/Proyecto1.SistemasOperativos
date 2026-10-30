@@ -154,6 +154,7 @@ public class EditorProceso extends JPanel {
     /** Lee el texto visible para actualizar el cálculo también antes de perder el foco. */
     static int numeroVisible(JSpinner spinner) {
         String text = ((JSpinner.DefaultEditor) spinner.getEditor()).getTextField().getText().trim();
+        if (!text.matches("-?\\d+") && !text.matches("-?\\d{1,3}([.,\\u00a0]\\d{3})+")) throw new IllegalArgumentException("Valor numérico inválido");
         java.text.NumberFormat formato = java.text.NumberFormat.getIntegerInstance();
         java.text.ParsePosition posicion = new java.text.ParsePosition(0);
         Number numero = formato.parse(text, posicion);
@@ -161,7 +162,7 @@ public class EditorProceso extends JPanel {
         long valor = numero.longValue();
         SpinnerNumberModel modelo = (SpinnerNumberModel) spinner.getModel();
         if (valor < ((Number) modelo.getMinimum()).longValue() || valor > ((Number) modelo.getMaximum()).longValue())
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("Valor fuera de rango");
         return (int) valor;
     }
 

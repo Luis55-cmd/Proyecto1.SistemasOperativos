@@ -251,7 +251,7 @@ public final class VistaSimulacionAlternativa extends JPanel {
         var b = view.buffers.get(fila);
         esperaBuffers.setText("Buffer " + b.id() + " · Contenido: " + b.datos().text()
                 + "\nProcesos en espera: " + b.blockedProcessesAsString());
-        if (!latencia.hasFocus()) latencia.setValue(b.latency());
+        if (!((JSpinner.DefaultEditor) latencia.getEditor()).getTextField().hasFocus()) latencia.setValue(b.latency());
     }
 
     private final class DetalleComputador extends JPanel {
@@ -290,7 +290,7 @@ public final class VistaSimulacionAlternativa extends JPanel {
             var p=c.cpu().PCB();
             cpu.setText(p==null ? "CPU libre · " + c.cpu().mode() : "Ejecuta " + p.name() + " (ID " + p.id() + ") · PC " + c.cpu().PC() + " · " + c.cpu().mode() + " · Prioridad " + p.priority() + " · Deadline " + p.remainingDeadline());
             ram.setText("RAM: " + c.memoryManager().usedMemory() + " usada · " + (c.memoryManager().totalMemory()-c.memoryManager().usedMemory()) + " libre · " + c.memoryManager().totalMemory() + " total");
-            politica.setSelectedItem(c.politica()); if (!quantum.hasFocus()) quantum.setValue(c.quantum());
+            politica.setSelectedItem(c.politica()); if (!((JSpinner.DefaultEditor) quantum.getEditor()).getTextField().hasFocus()) quantum.setValue(c.quantum());
             quantum.setEnabled(c.politica()==SchedulingPolicyType.ROUND_ROBIN);
             var k=c.kernel(); var colas=new SimulationSnapshot.QueueView[]{k.newQueue(),k.readyQueue(),k.blockedQueue(),k.endedQueue()};
             for(int i=0;i<colas.length;i++) { modelos[i].setRowCount(0); for(int j=0;j<colas[i].processes().size();j++) {

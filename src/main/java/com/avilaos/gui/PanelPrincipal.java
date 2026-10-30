@@ -273,6 +273,16 @@ public class PanelPrincipal extends JPanel {
                 .getTextField().getFormatter()).setCommitsOnValidEdit(true);
         spinnerAlmacenamiento.addChangeListener(e ->
                 memoriaBuffer.setText(spinnerAlmacenamiento.getValue().toString()));
+        Runnable actualizarRamBuffer = () -> {
+            try { memoriaBuffer.setText(Integer.toString(EditorProceso.numeroVisible(spinnerAlmacenamiento))); }
+            catch (IllegalArgumentException ex) { memoriaBuffer.setText("—"); }
+        };
+        ((JSpinner.DefaultEditor) spinnerAlmacenamiento.getEditor()).getTextField().getDocument()
+                .addDocumentListener(new javax.swing.event.DocumentListener() {
+                    public void insertUpdate(javax.swing.event.DocumentEvent e) { actualizarRamBuffer.run(); }
+                    public void removeUpdate(javax.swing.event.DocumentEvent e) { actualizarRamBuffer.run(); }
+                    public void changedUpdate(javax.swing.event.DocumentEvent e) { actualizarRamBuffer.run(); }
+                });
         fila2.add(campo("Tamaño en RAM", memoriaBuffer));
         tarjeta.add(fila2);
         tarjeta.add(Box.createVerticalStrut(22));
@@ -336,7 +346,7 @@ public class PanelPrincipal extends JPanel {
 
             
         } catch (Exception ex) {
-            resultadoBuffer.setText("Error al crear el buffer: " + ex.getMessage());
+            resultadoBuffer.setText("Error: Capacidad (1-1000) y latencia (0-1000) deben ser enteros válidos.");
         }
     }
     

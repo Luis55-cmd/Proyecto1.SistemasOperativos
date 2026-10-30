@@ -3,7 +3,7 @@ package com.avilaos.core.kernel;
 import com.avilaos.core.structures.MyLinkedList;
 import com.avilaos.concurrency.StateAccess;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
+
 
 /** Un único hilo de reloj reutilizado. Tick y comandos comparten el permiso de estado.
  * Dormir/esperar nunca retiene ese permiso. Pausa confirma el fin del tick en curso.
@@ -53,23 +53,34 @@ public class GlobalClock implements Runnable {
         for(IClockTickable subscriber:copy) subscriber.tick(cycle);
     }
     @Override public void run() {
-        while(true) {
-            boolean active;
-            StateAccess.enter();
-            try {
-                wake.drainPermits();
-                active=running && !paused;
-                if(active) tickLocked();
-            } catch (RuntimeException ex) {
-                paused=true; active=false;
-                System.err.println("[GlobalClock] Pausado por error: " + ex.getMessage());
-            } finally { StateAccess.exit(); }
-            try {
-                if(active) wake.tryAcquire(cycleDurationMs,TimeUnit.MILLISECONDS);
-                else wake.acquire();
-            } catch(InterruptedException ex) { Thread.currentThread().interrupt(); return; }
+    while(true) {
+        boolean active;
+        StateAccess.enter();
+        try {
+            wake.drainPermits();
+            active = running && !paused;
+            if(active) tickLocked();
+        } catch (RuntimeException ex) {
+            paused = true; active = false;
+            System.err.println("[GlobalClock] Pausado por error: " + ex.getMessage());
+        } finally { 
+            StateAccess.exit(); 
+        }
+        
+        try {
+            if(active) {
+                // Alternativa sin TimeUnit: usando Thread.sleep para la pausa del ciclo
+                // (Nota: esto asume que cycleDurationMs está en milisegundos)
+                Thread.sleep(cycleDurationMs);
+            } else {
+                wake.acquire();
+            }
+        } catch(InterruptedException ex) { 
+            Thread.currentThread().interrupt(); 
+            return; 
         }
     }
+}
     public void addSubscriber(IClockTickable subscriber) {
         StateAccess.enter();
         try { if(subscriber!=null && !subscribers.contains(subscriber)) subscribers.add(subscriber); }

@@ -198,7 +198,8 @@ public final class VistaSimulacionAlternativa extends JPanel {
         for (int i=0; i<view.computers.size(); i++) {
             Node c = view.computers.get(i);
             var p = c.cpu().PCB();
-            String cpu = p == null ? "CPU libre" : p.name() + " · PC " + c.cpu().PC() + " · " + c.cpu().mode();
+            String cpu = p == null ? "CPU libre" : p.name() + " · PC " + c.cpu().PC()
+                    + " · MAR " + p.memoryAddressRegister() + " · " + c.cpu().mode();
             JPanel card = tarjeta(); card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 95));
             card.add(texto(c.name() + " · " + c.politica(), 15, TINTA, true));
             card.add(texto(cpu + "  |  RAM " + c.memoryManager().usedMemory() + "/" + c.memoryManager().totalMemory(), 12, GRIS, false));

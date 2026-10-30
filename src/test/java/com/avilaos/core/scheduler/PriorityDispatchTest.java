@@ -22,12 +22,12 @@ public class PriorityDispatchTest {
                 "COLA: remanente ordenado sin duplicados");
 
         middle.setState(ProcessState.EJECUTANDO);
-        middle.setProgramCounter(2); middle.setMemoryAddressRegister(2);
+        middle.setProgramCounter(2); middle.setMemoryAddressRegister(1);
         high.setState(ProcessState.LISTO);
         queue.enqueue(low); queue.enqueue(high);
         check(scheduler.scheduleNext(queue,middle)==high, "APROPIACION: candidato oculto tras Baja");
         check(queue.size()==2 && queue.dequeue()==middle && queue.dequeue()==low
-                && middle.getProgramCounter()==2 && middle.getMemoryAddressRegister()==2,
+                && middle.getProgramCounter()==2 && middle.getMemoryAddressRegister()==1,
                 "CONTEXTO: conserva registros y devuelve una sola vez");
 
         var equal = p("Igual",10); queue.enqueue(equal);

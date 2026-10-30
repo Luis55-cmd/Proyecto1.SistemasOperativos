@@ -38,7 +38,7 @@ public class ProcessControlBlockTest {
         // Ciclo 1
         pcb.executeOneCycle(1);
         if (pcb.getProgramCounter() != 1) throw new AssertionError("PC debe ser 1");
-        if (pcb.getMemoryAddressRegister() != 1) throw new AssertionError("MAR debe ser 1");
+        if (pcb.getMemoryAddressRegister() != 0) throw new AssertionError("MAR debe ser 0: dirección de la primera instrucción");
         if (pcb.getRemainingTime() != 2) throw new AssertionError("remainingTime debe ser 2");
         if (pcb.getState() != ProcessState.EJECUTANDO) throw new AssertionError("Estado debe seguir siendo RUNNING");
         if (pcb.getStartCycle() != 1) throw new AssertionError("startCycle debe ser 1");

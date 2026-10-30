@@ -23,9 +23,9 @@ public class MemoriaCalculadaTest {
         check(p.getProgramCounter() == 4 && p.getBlockReason() == BlockReason.WAITING_IO, "Solicitud E/S ocupa una instrucción");
         var file = Files.createTempFile("avila-memoria", ".json");
         try {
-            var monitor = new MonitorSimulacion(c, () -> {});
-            check(monitor.guardarEstado(file.toFile()), "Guardar configuración");
-            check(monitor.cargarEstado(file.toFile()), "Cargar configuración");
+            var configuracion = new ConfiguracionSimulacion(c);
+            check(configuracion.guardarEstado(file.toFile()), "Guardar configuración");
+            check(configuracion.cargarEstado(file.toFile()), "Cargar configuración");
             p = c.getAllProcesses().get(0);
             pc = c.getComputers().get(0);
             check(p.isIoRequestInstruction() && p.getRequiredMemory() == 13, "Conserva regla tras cargar");

@@ -14,10 +14,10 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import static com.avilaos.gui.PanelPrincipal.*;
 
-/** Vista adicional del mismo modelo; no sustituye el monitor existente. */
+/** Vista de simulación y sus controles. */
 public final class VistaSimulacionAlternativa extends JPanel {
     private final SimulationController controller;
-    private final MonitorSimulacion monitor;
+    private final ConfiguracionSimulacion configuracion;
     private final JLabel reloj = texto("Ciclo 0 · Detenida", 20, TINTA, true);
     private final RelojAnimado relojAnimado = new RelojAnimado();
     private final JButton iniciar = accion("Iniciar", true);
@@ -40,10 +40,10 @@ public final class VistaSimulacionAlternativa extends JPanel {
     private long session;
     private boolean actualizando;
 
-    public VistaSimulacionAlternativa(SimulationController controller, MonitorSimulacion monitor) {
+    public VistaSimulacionAlternativa(SimulationController controller) {
         super(new BorderLayout(0, 12));
         this.controller = controller;
-        this.monitor = monitor;
+        this.configuracion = new ConfiguracionSimulacion(controller);
         this.view = controller.snapshot();
         this.session = view.session;
         intervalo.setSelectedItem(view.interval);
@@ -66,7 +66,7 @@ public final class VistaSimulacionAlternativa extends JPanel {
 
     private JPanel cabecera() {
         JPanel principal = columna();
-        principal.add(texto("SIMULACIÓN · VISTA NUEVA", 11, ACENTO, true));
+        principal.add(texto("SIMULACIÓN", 11, ACENTO, true));
         principal.add(Box.createVerticalStrut(6));
         principal.add(reloj);
         principal.add(Box.createVerticalStrut(10));
@@ -96,7 +96,6 @@ public final class VistaSimulacionAlternativa extends JPanel {
         reiniciar.addActionListener(e -> {
             reiniciar.setEnabled(false);
             eventos.setText("");
-            monitor.limpiarLog();
             GuiCommands.submit(() -> { controller.reset(); return true; }, ok -> {
                 reiniciar.setEnabled(true);
                 actualizar();
@@ -123,7 +122,7 @@ public final class VistaSimulacionAlternativa extends JPanel {
         if (guardar && !elegido.getName().toLowerCase().endsWith(".json")) elegido = new File(elegido.getAbsolutePath() + ".json");
         File archivo = elegido;
         boton.setEnabled(false);
-        GuiCommands.submit(() -> guardar ? monitor.guardarEstado(archivo) : monitor.cargarEstado(archivo), ok -> {
+        GuiCommands.submit(() -> guardar ? configuracion.guardarEstado(archivo) : configuracion.cargarEstado(archivo), ok -> {
             boton.setEnabled(true);
             if (!ok) JOptionPane.showMessageDialog(this, "No se pudo completar la operación. Consulta el log.", "Configuración", JOptionPane.ERROR_MESSAGE);
         }, error -> { boton.setEnabled(true); JOptionPane.showMessageDialog(this, error.getMessage(), "Configuración", JOptionPane.ERROR_MESSAGE); });
@@ -199,7 +198,7 @@ public final class VistaSimulacionAlternativa extends JPanel {
             Node c = view.computers.get(i);
             var p = c.cpu().PCB();
             String cpu = p == null ? "CPU libre" : p.name() + " · PC " + c.cpu().PC()
-                    + " · MAR " + p.memoryAddressRegister() + " · " + c.cpu().mode();
+                    + " · MAR " + (p.programCounter() == 0 ? "—" : p.memoryAddressRegister()) + " · " + c.cpu().mode();
             JPanel card = tarjeta(); card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 95));
             card.add(texto(c.name() + " · " + c.politica(), 15, TINTA, true));
             card.add(texto(cpu + "  |  RAM " + c.memoryManager().usedMemory() + "/" + c.memoryManager().totalMemory(), 12, GRIS, false));

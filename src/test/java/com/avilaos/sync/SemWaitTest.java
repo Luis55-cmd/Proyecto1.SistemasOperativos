@@ -30,7 +30,7 @@ public class SemWaitTest {
             ProcessControlBlock first = running();
             check(b.semWait(first, kind), "ADQUIRIR: concede permiso disponible");
             check(semaphore.availablePermits() == 0, "PERMISO: descontado exactamente una vez");
-            check(first.getProgramCounter() == 21 && first.getMemoryAddressRegister() == 31,
+            check(first.getProgramCounter() == 21 && first.getMemoryAddressRegister() == 20,
                     "REGISTROS: avanzan una instrucción");
             check(first.getState() == ProcessState.EJECUTANDO && queue.isEmpty(), "EXITO: no encola");
             check(first.getMode() == ExecutionMode.KERNEL, "MODO: instrucción kernel");
@@ -39,7 +39,7 @@ public class SemWaitTest {
             check(!b.semWait(second, kind), "BLOQUEO: no hay permiso");
             check(second.getState() == ProcessState.BLOQUEADO && second.getBlockReason() == reason,
                     "ESPERA: estado y motivo");
-            check(second.getProgramCounter() == 21 && second.getMemoryAddressRegister() == 31,
+            check(second.getProgramCounter() == 21 && second.getMemoryAddressRegister() == 20,
                     "PC_BLOQUEADO: ya apunta a siguiente instrucción");
             check(queue.size() == 1 && queue.peek() == second, "COLA: conserva identidad del PCB");
             try {

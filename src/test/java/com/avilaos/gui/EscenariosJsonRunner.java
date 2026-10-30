@@ -93,7 +93,7 @@ public class EscenariosJsonRunner {
                         for (int i = 0; i < ps.size(); i++) {
                             var p = ps.get(i);
                             int expected = p.getType() == ProcessType.PRODUCER ? 14 : 24;
-                            ok &= p.getProgramCounter() == expected && p.getMemoryAddressRegister() == expected
+                            ok &= p.getProgramCounter() == expected && p.getMemoryAddressRegister() == expected - 1
                                     && p.getPermitBufferId() == -1;
                         }
                         if (!ok) throw new AssertionError("PROTOCOLO: fin=" + fin + " RAM=" + ram

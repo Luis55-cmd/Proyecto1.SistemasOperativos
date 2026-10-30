@@ -120,8 +120,7 @@ public class ProducerConsumerDriver {
     }
 
     private void advanceInstruction(ProcessControlBlock pcb) {
-        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-        pcb.setMemoryAddressRegister(pcb.getMemoryAddressRegister() + 1);
+        pcb.advanceInstruction();
     }
 
     private void updateRemaining(ProcessControlBlock pcb) {

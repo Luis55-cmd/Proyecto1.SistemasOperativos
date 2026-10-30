@@ -22,7 +22,7 @@ public class Buffer {
      * Ejecuta una instrucción wait, sin bloquear el hilo Java.
      * Entrada: PCB ejecutando y semáforo de este buffer.
      * Salida: true si obtuvo permiso; false si quedó en la cola de espera.
-     * PC/MAR avanzan una vez incluso si bloquea; no hay bucle de espera.
+     * MAR toma el PC actual y PC avanza una vez incluso si bloquea; no hay bucle de espera.
      * Un estado inválido se rechaza antes de modificar PCB, permisos o colas.
      * signal concede el permiso al PCB encolado antes de marcarlo listo.
      * Ambas operaciones usan el monitor de este buffer.
@@ -54,8 +54,7 @@ public class Buffer {
 
         pcb.validateBufferPermitAcquisition(id, BufferPermit.valueOf(kind.name()));
         pcb.setMode(ExecutionMode.KERNEL);
-        pcb.setProgramCounter(pcb.getProgramCounter() + 1);
-        pcb.setMemoryAddressRegister(pcb.getMemoryAddressRegister() + 1);
+        pcb.advanceInstruction();
 
         if (semaphore.tryAcquire()) {
             pcb.grantBufferPermit(id, BufferPermit.valueOf(kind.name()));
@@ -72,7 +71,7 @@ public class Buffer {
      * Ejecuta signal como una instrucción del emisor, bajo el mismo monitor que wait.
      * Entradas: emisor ejecutando y semáforo de este buffer.
      * Salida: PCB al que se transfirió el permiso, o null si quedó disponible.
-     * Avanza solo PC/MAR del emisor. El receptor queda LISTO, sin repetir wait.
+     * Actualiza PC/MAR solo del emisor. El receptor queda LISTO, sin repetir wait.
      * Descarta entradas de espera obsoletas hasta hallar una válida o vaciar la cola.
      * Valida titularidad del mutex o notificación pendiente tras insertar/extraer.
      * El driver continúa en la fase siguiente sin reintentar wait.
@@ -88,8 +87,7 @@ public class Buffer {
         emitter.validateBufferSignal(id, BufferPermit.valueOf(kind.name()));
         emitter.recordBufferSignal(id, BufferPermit.valueOf(kind.name()));
         emitter.setMode(ExecutionMode.KERNEL);
-        emitter.setProgramCounter(emitter.getProgramCounter() + 1);
-        emitter.setMemoryAddressRegister(emitter.getMemoryAddressRegister() + 1);
+        emitter.advanceInstruction();
 
         return transferOrRelease(kind);
     }

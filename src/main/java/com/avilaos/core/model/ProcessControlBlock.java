@@ -265,7 +265,7 @@ public class ProcessControlBlock {
 
     /**
      * Ejecuta un ciclo de procesamiento sobre la CPU simulada.
-     * Si está en RUNNING, se incrementan linealmente programCounter++ y memoryAddressRegister++,
+     * Si está en RUNNING, se registra la dirección actual y avanza programCounter,
      * se decrementa remainingTime y se verifica si finalizó.
      *
      * @param currentCycle Ciclo actual del reloj global.
@@ -275,8 +275,7 @@ public class ProcessControlBlock {
             if (this.startCycle == -1) {
                 this.startCycle = currentCycle;
             }
-            this.programCounter++;
-            this.memoryAddressRegister++;
+            advanceInstruction();
             this.remainingTime--;
 
             if (this.remainingTime <= 0) {
@@ -285,6 +284,12 @@ public class ProcessControlBlock {
                 this.completionCycle = currentCycle;
             }
         }
+    }
+
+    /** MAR guarda la dirección de la instrucción ejecutada; PC señala la siguiente. */
+    public void advanceInstruction() {
+        this.memoryAddressRegister = this.programCounter;
+        this.programCounter++;
     }
 
     /**
